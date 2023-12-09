@@ -1,0 +1,17 @@
+
+* TODO dynamic membership
+
+* TODO add stake
+
+* TODO issue events in parallel
+
+* DONE issue events on scroll
+** DONE issue events when scroll is close to end
+
+* TODO viz votes
+
+* TODO viz voting concluded
+
+* TODO viz round concluded
+
+* TODO viz order of events

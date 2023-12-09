@@ -1,0 +1,76 @@
+{:deps  true
+ :nrepl {:port 8702}
+
+ ;; "." for /static
+ :dev-http {3002 ["public" "."]}
+
+ :js-options {:js-package-dirs ["node_modules"]}
+
+ :builds
+ {:app {:target        :browser
+        :module-loader true
+        :js-options    {:ignore-asset-requires true} ;; handle `require(xxx.css)`
+        :modules       {:main
+                        {:init-fn hashgraph.app.core/init}}
+
+        :output-dir       "./public/js"
+        :asset-path       "/public/js"
+        :release          {:asset-path "https://asset.logseq.com/static/js"}
+        :compiler-options {:optimizations :none
+                           :infer-externs      :auto
+                           :output-feature-set :es-next-in
+                           :source-map         true
+                           :externs            ["datascript/externs.js"
+                                                "externs.js"]
+                           :warnings           {:fn-deprecated false
+                                                :redef         false}}
+        :closure-defines  {goog.debug.LOGGING_ENABLED true}
+
+        ;; NOTE: electron, browser/mobile-app use different asset-paths.
+        ;;   For browser/mobile-app devs, assets are located in /static/js(via HTTP root).
+        ;;   For electron devs, assets are located in ./js(via relative path).
+        ;; :dev      {:asset-path "./js"}
+        :build-hooks [(portal.shadow.remote/hook)]
+        :devtools {:before-load hashgraph.app.core/stop  ;; before live-reloading any code call this function
+                   :after-load  hashgraph.app.core/start ;; after live-reloading finishes call this function
+                   :watch-path  "/static"
+                   :preloads    [shadow.remote.runtime.cljs.browser
+                                 portal.shadow.preload]}}
+
+  #_#_
+  :test {:target           :node-test
+         :output-to        "static/tests.js"
+         :closure-defines  {frontend.util/NODETEST true}
+         :devtools         {:enabled false}
+         ;; disable :static-fns to allow for with-redefs and repl development
+         :compiler-options {:static-fns false}
+         :main             frontend.test.frontend-node-test-runner/main}
+
+  #_#_
+  :gen-malli-kondo-config {:target           :node-script
+                           :closure-defines  {frontend.util/NODETEST true}
+                           :devtools         {:enabled false}
+                           :compiler-options {:static-fns false}
+                           :output-to        "static/gen-malli-kondo-config.js"
+                           :main             gen-malli-kondo-config.core/main}
+
+  #_#_
+  :publishing {:target        :browser
+               :module-loader true
+               :js-options    {:ignore-asset-requires true}
+               :modules       {:main
+                               {:init-fn frontend.publishing/init}}
+
+               :output-dir       "./static/js/publishing"
+               :asset-path       "static/js"
+               :closure-defines  {frontend.config/PUBLISHING true
+                                  goog.debug.LOGGING_ENABLED true}
+               :compiler-options {:infer-externs      :auto
+                                  :output-feature-set :es-next
+                                  :externs            ["datascript/externs.js"
+                                                       "externs.js"]
+                                  :warnings           {:fn-deprecated false
+                                                       :redef         false}}
+               :devtools         {:before-load frontend.core/stop
+                                  :after-load  frontend.core/start
+                                  :preloads    [devtools.preload]}}}}

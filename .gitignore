@@ -1,0 +1,9 @@
+public/js/*
+node_modules/
+.shadow-cljs
+.lsp
+.cpcache
+transit.json
+*.clj-kondo
+.clj-kondo/.cache
+!/.clj-kondo
