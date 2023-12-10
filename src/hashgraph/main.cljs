@@ -14,10 +14,15 @@
        (parent x) (conj (parent x))
        (self-parent x) (conj (self-parent x))))))
 
+(def parent?
+  (memoize
+   (fn [x y]
+     (contains? (parents x) y))))
+
 (def ancestor?
   (memoize
    (fn [x y]
-     (or ((parents x) y)
+     (or (parent? x y)
          (some #(ancestor? % y) (parents x))))))
 
 (def self-ancestor?
@@ -116,86 +121,107 @@
          (some->> not-empty (apply max) inc)
          (or 1)))))
 
-(defn witness? [x]
-  (or (nil? (:self-parent x))
-      (< (round (:self-parent x))
-         (round x))))
+(def witness?
+  (memoize
+   (fn [x]
+     (or (nil? (:self-parent x))
+         (< (round (:self-parent x))
+            (round x))))))
 
-(defn rounds-diff [x y]
-  (- (round x)
-     (round y)))
+(def rounds-diff
+  (memoize
+   (fn [x y]
+     (- (round x)
+        (round y)))))
 
 (def d 1) ;; round in which voting starts
 (def c 10) ;; each c's round is a coin flip round
-(defn voting-round? [x y] (> (rounds-diff x y) d))
+(def voting-round?
+  (memoize
+   (fn [x y] (> (rounds-diff x y) d))))
 
-(defn voting-coin-flip-round? [x y]
-  (and (voting-round? x y)
-       (->> (rounds-diff x y) (mod c) (= 0))))
+(def voting-coin-flip-round?
+  (memoize
+   (fn [x y]
+     (and (voting-round? x y)
+          (-> (rounds-diff x y) (mod c) (= 0))))))
 
 (defn signature [evt] (:signature evt))
 (defn middle-bit [sig] 1)
 
-(defn self-witness [x]
-  (cond (nil? (:self-parent x))     nil
-        (witness? (:self-parent x)) (:self-parent x)
-        :else                       (self-witness (:self-parent x))))
+(def self-witness
+  (memoize
+   (fn [x]
+     (cond (nil? (:self-parent x))     nil
+           (witness? (:self-parent x)) (:self-parent x)
+           :else                       (self-witness (:self-parent x))))))
 
 (defn vote-see? [x y] (= (rounds-diff x y) 1))
 (defn vote-see  [x y] (see? x y))
 
 (declare voting-concluded?)
 (declare vote)
-(defn vote-copy? [x y]
-  (or (not (witness? x))
-      (some-> (self-parent x) (voting-concluded? y))))
-(defn vote-copy [x y] (vote (self-parent x) y))
+(def vote-copy?
+  (memoize
+   (fn [x y]
+     (or (not (witness? x))
+         (some-> (self-parent x) (voting-concluded? y))))))
+(def vote-copy
+  (memoize
+   (fn [x y] (vote (self-parent x) y))))
 
 (declare votes-fract-true)
-(defn vote-coin-flip? [x y]
-  (and (voting-coin-flip-round? x y)
-       (<= (-> (votes-fract-true x y) (/ 3) floor))
-       (>= (-> (votes-fract-true x y) (* 2) (/ 3) floor))))
+(def vote-coin-flip?
+  (memoize
+   (fn [x y]
+     (and (voting-coin-flip-round? x y)
+          (<= (-> (votes-fract-true x y) (/ 3) floor))
+          (>= (-> (votes-fract-true x y) (* 2) (/ 3) floor))))))
 
 (defn vote-coin-flip [x] (= 1 (middle-bit (signature x))))
 
-(defn vote-for-majority [x y] (>= (votes-fract-true x y) (/ 1 2)))
+(def vote-for-majority
+  (memoize
+   (fn [x y] (>= (votes-fract-true x y) (/ 1 2)))))
 
-(defn vote
+(def vote
   "Vote of x about fame of y."
-  [x y]
-  (cond (vote-see? x y)       (vote-see x y)
-        (vote-copy? x y)      (vote-copy x y)
-        (vote-coin-flip? x y) (vote-coin-flip x)
-        :vote-for-majority    (vote-for-majority x y)))
+  (memoize
+   (fn [x y]
+     (cond (vote-see? x y)       (vote-see x y)
+           (vote-copy? x y)      (vote-copy x y)
+           (vote-coin-flip? x y) (vote-coin-flip x)
+           :vote-for-majority    (vote-for-majority x y)))))
 
-(defn votes
+(def votes
   "Votes on fame of y from witnesses seen by many in the round before x, as known to x."
-  [x y]
-  (-> x
-      events
-      (->> (filter (fn [z] (and (= (rounds-diff x z) 1)
-                                (witness? z)
-                                (see-many-see? x z))))
-           spy
-           (map (fn [z] (vote z y)))
-           spy)))
+  (memoize
+   (fn [x y]
+     (-> x
+         events
+         (->> (filter (fn [z] (and (= (rounds-diff x z) 1)
+                                   (witness? z)
+                                   (see-many-see? x z))))
+              (map (fn [z] (vote z y))))))))
 
-(defn votes-fract-true [x y]
-  (/ (count (filter true? (votes x y)))
-     (max 1 (count (votes x y)))))
+(def votes-fract-true
+  (memoize
+   (fn [x y]
+     (/ (count (filter true? (votes x y)))
+        (max 1 (count (votes x y)))))))
 
-(defn voting-concluded?
+(def voting-concluded?
   "Whether fame of y is concluded, as known to x.
    Fame is concluded when in a regular round there are many same votes."
-  [x y]
-  (or (some-> (self-witness x) (voting-concluded? y))
-      (and (witness? x)
-           (witness? y)
-           (voting-round? x y)
-           (not (voting-coin-flip-round? x y))
-           (or (> (count (filter true? (votes x y))) hg-members/many)
-               (> (count (filter false? (votes x y))) hg-members/many)))))
+  (memoize
+   (fn [x y]
+     (or (some-> (self-witness x) (voting-concluded? y))
+         (and (witness? x)
+              (witness? y)
+              (voting-round? x y)
+              (not (voting-coin-flip-round? x y))
+              (or (> (count (filter true? (votes x y))) hg-members/many)
+                  (> (count (filter false? (votes x y))) hg-members/many)))))))
 
 (defn round-concluded?
   "Whether the round has fame of all it's witnesses concluded,
