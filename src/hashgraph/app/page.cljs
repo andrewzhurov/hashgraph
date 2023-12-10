@@ -98,22 +98,27 @@
                    :on-mouse-enter     #(reset! *hovered-evt evt)
                    #_#_:on-mouse-leave #(reset! *hovered-evt nil)}]
          [:g.votes
-          (for [seen-by-member (-> evts
+          (for [top-witness (-> evts
                                    hg/tips
-                                   (->> (map (fn [tip]
-                                               (when (hg/see? tip evt)
-                                                 (:creator tip))))
-                                        (filter some?)
-                                        (map hg-members/members)))]
-            (let [vote-circumferance (/ vote-view-circumferance (count hg-members/members))
+                                   (->> (map hg/self-witness))
+                                   )]
+            (let [member (-> top-witness :creator hg-members/members)
+                  vote-circumferance (/ vote-view-circumferance (count hg-members/members))
                   vote-circumferance-start (-> vote-view-circumferance
                                                (/ hg-members/members-count)
-                                               (* (:member/idx seen-by-member)))]
+                                               (* (:member/idx member)))]
               [:circle {:r                vote-view-r
                         :cx               x
                         :cy               y
                         :fill             :transparent
-                        :stroke           (color-rgba-str (:member/color-rgb seen-by-member) 0.5)
+                        :stroke           (color-rgba-str (:member/color-rgb member)
+                                                          #_(cond (hg/see-many-see? top-witness evt) 1
+                                                                (hg/see? top-witness evt) 0.5
+                                                                :else 0)
+                                                          (or (and (hg/voting-concluded? top-witness evt)
+                                                                   (or (and (hg/vote top-witness evt) 1)
+                                                                       0))
+                                                              (spy (hg/votes-fract-true top-witness evt))))
                         :stroke-width     (* vote-view-r 2)
                         :stroke-dasharray (str "0 " vote-circumferance-start " " vote-circumferance " " vote-view-circumferance)
                         #_#_:transform (str "rotate("(* (:member/idx seen-by-member)

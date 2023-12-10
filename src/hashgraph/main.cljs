@@ -1,9 +1,9 @@
 (ns hashgraph.main
   (:require [cljs.math :refer [floor ceil]]
-            [hashgraph.members :as hg-members]))
+            [hashgraph.members :as hg-members]
+            [taoensso.timbre :refer-macros [spy]]))
 
 (defn parent [x] (:parent x))
-
 (defn self-parent [x] (:self-parent x))
 
 (def parents
@@ -17,23 +17,14 @@
 (def ancestor?
   (memoize
    (fn [x y]
-     (and #_(not= (:creator x) (:creator y))
-          (or (= (:parent x) y)
-              (some-> (:parent x) (ancestor? y)))))))
+     (or ((parents x) y)
+         (some #(ancestor? % y) (parents x))))))
 
 (def self-ancestor?
   (memoize
    (fn [x y]
-     (or (= (:self-parent x) y)
-         (some-> (:self-parent x) (self-ancestor? y))))))
-
-(def any-ancestor?
-  (memoize
-   (fn [x y]
-     (or (= (:parent x) y)
-         (= (:self-parent x) y)
-         (some-> (:parent x) (any-ancestor? y))
-         (some-> (:self-parent x) (any-ancestor? y))))))
+     (or (= (self-parent x) y)
+         (some-> (self-parent x) (self-ancestor? y))))))
 
 (def many-creators?
   (memoize
@@ -54,14 +45,6 @@
        (:parent x)      (-> (conj (:parent x))
                             (into (events (:parent x))))))))
 
-
-(def self-parents
-  (memoize
-   (fn [x]
-     (if (nil? (self-parent x))
-       []
-       (into [(self-parent x)] (self-parents (self-parent x)))))))
-
 (def tips "Latest events by members"
   (memoize (fn [evts]
              (->> evts (into #{} (remove (fn [x] (some (fn [y] (= (:self-parent y) x)) evts))))))))
@@ -77,6 +60,13 @@
                     (parent x)      (conj (inc (index (parent x))))
                     (self-parent x) (conj (inc (index (self-parent x))))))))))
 
+(def self-ancestors
+  (memoize
+   (fn [x]
+     (if (nil? (self-parent x))
+       []
+       (into [(self-parent x)] (self-ancestors (self-parent x)))))))
+
 (def self-descendants
   "Returns a set of self-descendants of y, as known by x."
   (memoize
@@ -89,12 +79,12 @@
   "Whether y is in a fork, as known to x."
   (memoize
    (fn [x y]
-     (or (-> y
-             self-parent
-             (->> (self-descendants x))
-             count
-             (> 1))
-         (in-fork? x (self-parent y))))))
+     (or (some-> y
+                 self-parent
+                 (->> (self-descendants x))
+                 count
+                 (> 1))
+         (some->> y self-parent (in-fork? x))))))
 
 
 (def see?
@@ -158,8 +148,8 @@
 (declare vote)
 (defn vote-copy? [x y]
   (or (not (witness? x))
-      (some-> (:self-parent x) (voting-concluded? y))))
-(defn vote-copy [x y] (vote (:self-parent x) y))
+      (some-> (self-parent x) (voting-concluded? y))))
+(defn vote-copy [x y] (vote (self-parent x) y))
 
 (declare votes-fract-true)
 (defn vote-coin-flip? [x y]
@@ -187,7 +177,9 @@
       (->> (filter (fn [z] (and (= (rounds-diff x z) 1)
                                 (witness? z)
                                 (see-many-see? x z))))
-           (map (fn [z] (vote z y))))))
+           spy
+           (map (fn [z] (vote z y)))
+           spy)))
 
 (defn votes-fract-true [x y]
   (/ (count (filter true? (votes x y)))
