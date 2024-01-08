@@ -9,9 +9,17 @@
         binaryage/devtools  {:mvn/version "1.0.5"}
         garden/garden       {:mvn/version "1.3.10"}
         com.taoensso/timbre {:mvn/version "6.3.1"}
-        djblue/portal       {:mvn/version "0.50.0"}}
+        com.taoensso/tufte  {:mvn/version "2.6.3"}
+        djblue/portal       {:mvn/version "0.50.0"}
 
- :aliases {:cljs {:extra-paths ["src/dev-cljs/" "src/test/"]
+        weavejester/dependency {:mvn/version "0.2.1"}
+        io.github.nextjournal/clerk {:mvn/version "0.15.957"}
+        arrowic/arrowic {:mvn/version "0.1.1"}
+
+}
+
+ :aliases {:clerk {:main-opts ["-m" "hashgraph.clerk"]}
+           :cljs {:extra-paths ["src/dev-cljs/" "src/test/"]
                   :extra-deps  {;;org.clojure/clojurescript        {:mvn/version "1.11.54"}
                                 org.clojure/tools.namespace      {:mvn/version "0.2.11"}
                                 ;; cider/cider-nrepl                {:mvn/version "0.29.0"}

@@ -10,34 +10,45 @@
 
 (defonce *portal-logs (atom '()))
 
-(defn log->portal-log [{:keys [spying? vargs level ?err msg_ timestamp_ ?ns-str ?file context ?line] :as all}]
+(defn log->portal-log [{:keys [spying? id key vargs level ?err msg_ timestamp_ ?ns-str ?file context ?line] :as all}]
   #_(js/console.log all)
   (cond spying?
         (let [[expr _ result] vargs]
-          {;; :runtime :cljs
-           :expr expr
-           :result result})
+          (if (map? result)
+            (apply array-map
+                   :expr expr
+                   (apply concat result))
+            {:expr   expr
+             :result result}))
 
         :else
-        (merge
-         (when ?err
-           {:error (d/datafy ?err)})
-         (when-let [ts (force timestamp_)]
-           {:time ts #_ (i/read-instant-date ts)})
-         {:level   level
-          :ns      (symbol (or ?ns-str ?file "?"))
-          :line    (or ?line 1)
-          :column  1
-          :result  (force msg_)
-          :runtime :clj}
-         context)))
+        (let [k (and (= 2 (count vargs)) (:key (first vargs)))
+              id (and (= 2 (count vargs)) (:id (first vargs)))
+              result (last vargs)]
+          (if id
+            (cond-> {}
+              id (assoc :id id)
+              k (assoc k result)
+              (and (nil? k) (map? result)) (merge result)
+              (and (nil? k) (not (map? result))) (assoc :result result))))))
 
 (defn portal-log!
   "Accumulate a rolling log of 100 entries."
   [log]
-  (swap! *portal-logs
+  (if (:spying? log)
+    (let [[expr delim value] (:vargs log)]
+      (js/console.log {:expr expr :value value}))
+    (js/console.log (first (:vargs log))))
+  #_(swap! *portal-logs
          (fn [logs]
-           (take 100 (conj logs (log->portal-log log))))))
+           (let [id (and (some-> log :vargs second)
+                         (some-> log :vargs first :id))
+                 logged-log (and id
+                                 (some #(and (= id (:id %))
+                                             %)
+                                       logs))]
+             (take 100 (conj logs (cond->> (log->portal-log log)
+                                    logged-log (merge logged-log))))))))
 
 (defn setup-timbre->portal []
   (timbre/merge-config!
@@ -64,4 +75,4 @@
   (setup-timbre->portal)
   (p/set-defaults! {:theme :portal.colors/gruvbox})
   #_(add-tap p/submit)
-  (open-portal))
+  #_(open-portal))

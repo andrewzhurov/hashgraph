@@ -7,3 +7,4 @@ transit.json
 *.clj-kondo
 .clj-kondo/.cache
 !/.clj-kondo
+src/hashgraph/scratch.cljs

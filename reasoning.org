@@ -1,17 +1,126 @@
 
 * TODO dynamic membership
+** DONE initial membership
+** TODO initial membership UI
+** DONE issue invites
+** TODO issue invites UI (as of some member)
 
-* TODO add stake
+* TODO stake
+** TODO initial stake UI
+** DONE share stake on invite
+** DONE conclude with stake-map
+** DONE witness with stake-map
 
-* TODO issue events in parallel
+* DONE issue events in parallel
 
 * DONE issue events on scroll
 ** DONE issue events when scroll is close to end
 
-* TODO viz votes
+* DONE viz votes
 
-* TODO viz voting concluded
+* DONE viz voting concluded
 
-* TODO viz round concluded
+* DONE viz round concluded
 
-* TODO viz order of events
+* DONE viz order of events
+
+* TODO perhaps uniform init-db creation
+
+* TODO efficient render
+** CANCELLED render view area + a bit around
+Turned out to be slower than allowing browser to handle it.
+Just rendering the whole SVG now.
+** TODO profile code
+** TODO issuing invites on infini-events slows down a ton
+** TODO re-rendering refs is meh
+** TODO re-rendering all other stuff is meh
+
+* DONE fix inspector
+* DONE pass top evt and not witness
+* DONE fix stuck on 3rd round
+* DONE add mod keys to inspector
+** DONE shift to peek on hover
+** DONE shift to inspect on click
+** DONE expand on plain click
+* DONE add flip as right-click option
+* TODO make it easier to uninspect
+* TODO show stake-map as of prev cr
+
+* objectives
+** understand the algo to see how it can be applied in NG
+** to make algorithm understandable
+*** things to explain:
+**** members
+***** members connectivity
+***** member's stake
+***** events
+****** event tx
+******* share stake tx
+******** show how without stake it's possible to overwhelm with puppet-socks members
+******** show how stake-map affects: round, witness, votes.
+******* register on-the-repo tx
+******** i.e., smart contract / FSM transition
+******** trigger registered on-the-repo tx
+******* arbitrary determenistic tx
+******** in IPVM
+********* as SPARQL with oxigraph
+****** event other-parent
+****** event self-parent
+******* forks
+******** sees
+********* strongly sees
+********** round
+*********** witnesses
+************ votes
+************* concludes voting
+************** infamous witness
+************** famous witness
+*************** unique famous witness
+**************** round concluded
+***************** event round received
+****************** event received time
+******************* learners events
+******************** their median ones
+********************* median creation time
+******************* event order by round received + received time
+****************** custom CRS
+******************* event order by round received + custom CRS
+******************** by round received + received time
+******************** by round received + custom CRS
+************ receives votes
+
+
+* possible further work
+** switch to garden color data model
+*** add color viz to inspector
+** make algorithm viz mesmerizing
+** make interactive learning
+*** in form of a saper game
+**** with progress saved
+**** gets more difficult as you go
+**** leaderboard
+*** in form of a MCQ
+** resistance to inactive members
+*** e.g., remove their stake from acceptance threshold
+** receive txes by a random unique famous witness
+*** as [[https://hyp.is/i7oToKStEe6K2yuNUmkCBA/www.semanticscholar.org/reader/a40fa41177feb0a9aa59fff45caa4cfa7058fd51][is done in DAG-Rider]]
+*** take more inspiration from DAG-Rider
+*** take inspiration from other DAG-based blockchains
+** delegated stake
+** many other-parents
+** XOX
+** AST
+*** for concluding rounds eval only the AST of share stake txes
+*** share with peers only txes that they are interested in
+**** e.g., that you know are on top of their ASTs
+**** perhaps have dynamic stake on a tx, based on who's collaborating on it
+** consensus on demand
+*** sharding / dynamic quorum pools
+** compaction / snapshots
+** bloom filter for efficient sync
+*** (up to a snapshot) or up to received txes (hash of that tx + proofs is enough to build on top of it)
+** add libp2p for real peers to talk
+*** an example app
+**** what's the use-case with high degree of conflict and p2p?
+***** asset transfer
+**** what's the use-case with need of total order?

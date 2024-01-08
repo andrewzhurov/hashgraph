@@ -2,7 +2,9 @@
   "Entry ns for the browser app"
   {:dev/always true}
   (:require [rum.core :as rum]
+            [taoensso.tufte :as tufte :refer [defnp p profiled profile]]
             [hashgraph.app.log :as hga-log]
+            [hashgraph.app.inspector :as hga-inspector]
             [hashgraph.app.page :as page]))
 
 (defn start []
@@ -22,4 +24,9 @@
   ;; this is called in the index.html and must be exported
   ;; so it is available even in :advanced release builds
   (hga-log/init)
+  (tufte/add-basic-println-handler!
+   {}
+   #_{:format-pstats-opts {:columns      [:n :p50 :mean :clock :sum]
+                           :format-id-fn name}})
+  (hga-inspector/register-keydowns-lister)
   (start))
