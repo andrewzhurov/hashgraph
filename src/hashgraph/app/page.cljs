@@ -31,7 +31,6 @@
    [hashgraph.utils
     :refer [merge-attr-maps color-rgba-str]
     :refer-macros [defn* l]]
-   [hashgraph.utils2 :refer-macros [td]]
    [rum.core :as rum]
    [taoensso.timbre :refer-macros [spy info]]
    [taoensso.tufte :as tufte :refer [defnp fnp p profiled profile]]
@@ -110,22 +109,6 @@
                  :style {:stroke       :lightgray #_(if line-highlighted? :blue :lightgray)
                          :stroke-width "2px"}}]))]))
 
-(rum/defc events-refs-view < rum/static
-  [[evt & rest-evts]]
-  [:<>
-   (if (empty? rest-evts)
-          [:<>]
-          (events-refs-view rest-evts))
-   (event-refs-view evt)])
-
-(rum/defc evt-refs-view < rum/static
-  [evt]
-  [:<>
-   (if (nil? (hg/self-parent evt))
-     [:<>]
-     (evt-refs-view (hg/self-parent evt)))
-   (event-refs-view evt)])
-
 (def vote-circumferance-start+for+end
   (memoize
    (fn [member-name stake-map]
@@ -146,14 +129,6 @@
 
 
 (def event-view-key-fn {:key-fn (fn [{:event-info/keys [coords]}] (str coords))})
-
-#_(def event-view-error-on-final-round-change
-  {:should-update (fn [{[{old-r :r old-r-final? :r-final? :as old-args}] :rum/args :as old-state}
-                       {[{new-r :r new-r-final? :r-final? :as new-args}] :rum/args :as new-state}]
-                    (when-let [error (cond (and old-r-final? (not new-r-final?)) (new js/Error (str "round changed from final to not final: " (pr-str old-args) " " (pr-str new-args)))
-                                           (and old-r-final? (not= old-r new-r)) (new js/Error (str "round been final but changed to a different one: " (pr-str old-args) " " (pr-str new-args))))]
-                      (js/throw error))
-                    (not= old-state new-state))})
 
 (rum/defcs event-view < rum/static rum/reactive event-view-key-fn
   [state {:event-info/keys [event round r-concluded? coords x y share-stake? color fill witness? stake-map votes received-event] :as event-info}]
@@ -281,46 +256,6 @@
             :fill         fill}]]))]))
 
 
-
-#_
-(rum/defc events-view < rum/static
-  [[evt & rest-evts]]
-  [:<>
-   (if (empty? rest-evts)
-     [:<>]
-     (events-view rest-evts))
-   (let [member   (-> evt hg/creator hg-members/members)
-         color    "gray" #_(color-rgba-str (:member/color-rgb member))]
-     (event-view {:evt      evt
-                  :coords   (evt-view-position evt)
-                  :witness? (hg/witness? evt)
-                  :color    color}))])
-
-
-#_
-(defn with-received-votes-xf [witnesses]
-  (map (fn [evt-info]
-         (let [evt (:evt evt-info)]
-           (cond-> evt-info
-             (hg/witness? evt)
-             (assoc :received-votes
-                    (->> witnesses
-                         (into {} (map (fn [w] [(:event/creator w)
-                                                {:fract-true (hg/votes-fract-true w evt)
-                                                 :concluded? (hg/voting-concluded? w evt)}]))))))))))
-
-(defn with-hovered?-xf [hovered-evt]
-  (map (fn [evt-info]
-         (cond-> evt-info
-           (= (:evt evt-info) hovered-evt)
-           (assoc :hovered? true)))))
-
-(def with-coords-xf
-  (map (fn [evt-info]
-         (assoc evt-info :coords (evt-view-position (:evt evt-info))))))
-
-
-
 (defn ->view-bound-min [scroll-top]
   scroll-top)
 
@@ -337,43 +272,6 @@
 
 (defn ->below-view? [y scroll-top]
   (< y (->view-bound-min scroll-top)))
-
-#_(def in-view??
-  (fn [scroll-top]
-    (let [[view-bound-min view-bound-max] (view-bounds scroll-top)]
-      (fn [evt]
-        (let [y (evt-view-position-y evt)]
-          (and (> y view-bound-min)
-               (< y view-bound-max)))))))
-#_#_#_#_
-above-view? (fn [evt]
-              (let [y (evt-view-position-y evt)]
-                (> y view-bound-max)))
-below-view? (fn [evt]
-              (let [y (evt-view-position-y evt)]
-                (< y view-bound-max)))
-#_
-((fn get-in-views [acc evt]
-                 (let [stop?   (or (nil? (hg/self-parent evt))
-                                   (and (some-> acc last hg/creator (= (hg/creator evt)))
-                                        (some-> acc last in-view?)
-                                        (not (in-view? evt))))
-                       new-acc (or (and (or (in-view? evt)
-                                            (and (above-view? evt)
-                                                 (or (below-view? (hg/self-parent evt))
-                                                     (below-view? (hg/other-parent evt)))))
-                                        (conj acc evt))
-                                   acc)]
-                   (if stop?
-                     new-acc
-                     (recur new-acc (hg/self-parent evt)))))
-               acc hg)
-
-#_
-(defn filter-in-view-xf [scroll-top]
-  (let [in-view?? (in-view? scroll-top)]
-    (filter in-view??)))
-
 
 (def *scroll-top (atom 0))
 (def *viz-dom-node (atom nil))
@@ -470,7 +368,7 @@ below-view? (fn [evt]
       to-receive-votes?
       (assoc :event-info/stake-map (hg/concluded-round->stake-map ?atop-cr))
 
-      (or received-votes? receives-votes?) ;; been no votes to lately arrived evt of the last cr
+      (or received-votes? receives-votes?)
       (assoc :event-info/votes (:concluded-voting/votes (hg/->?concluded-voting voting-by event ?atop-cr))))))
 
 (def *rendered-evt-infos
@@ -482,8 +380,6 @@ below-view? (fn [evt]
                     (let [{r        :round/number
                            r-final? :round/final?
                            r-cr     :round/cr :as round} (hg/->round event ?last-concluded-round) ;; been very costly :hashgraph.app.page/round
-                          ;; nCalls        Min      50% ≤      90% ≤      95% ≤      99% ≤        Max       Mean   MAD      Clock  Total
-                          ;;     49        0ns        0ns        0ns      105ms      223ms      223ms        9ms ±188%      449ms    99%
 
                           witness?          (hg/witness? event r-cr)
                           to-receive-votes? (and witness?
@@ -528,181 +424,7 @@ below-view? (fn [evt]
 
      [:g.events-view
       (for [evt-info rendered-evt-infos]
-        (event-view evt-info))]
-
-     #_
-     [:g.received-events-view
-      (when-let [last-received-event ?last-received-event]
-        (for [re (take-while some? (iterate :received-event/prev-received-event last-received-event))]
-          (let [{:received-event/keys [event middle-learned-events received-time concluded-round r-idx color]} re
-
-                received-y (t->view-position-y received-time)
-                received-x (-> (idx-view-position-x (count hg-members/names))
-                               (+ (* r-idx hga-events/evt-view-s)))
-
-                #_#_
-                color (-> event
-                          hg/event->person
-                          :member/color-rgb
-                          color-rgba-str)
-                event-info
-                {:evt           event
-                 :coords        [received-x received-y]
-                 ;; :color    color
-                 :analysis?     (hga-inspector/->analysis?)
-                 :in-inspected? (hga-inspector/->in-inspected? event)
-                 :in-peeked?    (hga-inspector/->in-peeked? event)
-                 :fill          color}]
-
-            [:g.receivend-event-view {:key (str (:coords event-info))}
-             #_
-             (let [parent-evt (:received-event/event (:received-event/prev-received-event received-event))
-                   [r-x r-y]  (evt-view-position evt)
-                   [p-x p-y]  (evt-view-position parent-evt)]
-               [:line
-                {:x1           r-x
-                 :y1           r-y
-                 :x2           p-x
-                 :y2           p-y
-                 :stroke       (:received-event/color received-event)
-                 :stroke-width "2px"}])
-
-             (when (hga-inspector/->in-peeked? event)
-               (for [mle middle-learned-events]
-                 [:line {:x1           (evt-view-position-x mle)
-                         :y1           (evt-view-position-y mle)
-                         :x2           received-x
-                         :y2           received-y
-                         :stroke       "blue"
-                         :stroke-width "2px"}]))
-
-             (event-view event-info)])))]
-     ;; {:event/round
-     ;;  :event/witness?
-     ;;  :event/received-votes
-     ;;  :event/voting-concluded?
-     ;;  :event/creator
-     ;;  :event/self-parent
-     ;;  :event/other-parent}
-     ;; {:received-event/event ordered-event
-     ;;  :received-event/received-round r
-     ;;  :received-event/by-events #{}
-     ;;  :received-event/prev-received-event prev-event}
-     ;; {:round/concluded? true
-     ;;  :round/witnesses #{}
-     ;;  :round/unique-famous-witnesses #{}
-     ;;  :round/events #{}
-     ;;  :round/received-events #{}
-     ;;  :round/last-received-event evt
-     ;;  :received-round/size (count ordered-events)
-     ;;  :received-round/}
-
-
-     #_(let [[view-bound-min view-bound-max] (view-bounds scroll-top)
-             above-view?                     (above-view?? view-bound-max)
-             below-view?                     (below-view?? view-bound-min)])
-     #_
-     (for [hg hgs]
-       (into [:g.hg] (comp (take-while some?)
-                           (map (fn [evt] {:evt   evt
-                                           :color (-> evt
-                                                      :event/creator
-                                                      hg-members/members
-                                                      :member/color-rgb
-                                                      color-rgba-str )}))
-                           with-coords-xf
-                           #_(drop-while (comp above-view? :coords))
-                           #_(take-while (comp (complement below-view?) :coords))
-                           (with-hovered?-xf hovered-evt)
-                           #_(with-received-votes-xf top-witnesses)
-                           (map event-view))
-             (iterate hg/self-parent hg)))
-
-
-
-     #_
-     [:g.round-concluded
-      (for [top-witness top-witnesses
-            r           (map inc (range 0 (hg/round top-witness)))
-            :when       (hg/round-concluded? top-witness r)
-            :let        [r-highest-wit-position-y (apply max (map evt-view-position-y (hg/round-witnesses top-witness r)))
-                         concluding-witness? (= top-witness (some (fn [w] (and (= (:event/creator w) "Alice") w)) top-witnesses))]]
-        [:g
-         [:line {:x1    0
-                 :y1    r-highest-wit-position-y
-                 :x2    800
-                 :y2    r-highest-wit-position-y
-                 :style {:stroke       :gray
-                         :stroke-width "2px"}}]
-
-         (let [color1 "blue"
-               color2 "green"]
-           [:defs
-            [:linearGradient {:id "even-round-color"}
-             [:stop {:offset "0%" :stop-color color1}]
-             [:stop {:offset "100%" :stop-color color2}]]
-            [:linearGradient {:id "odd-round-color"}
-             [:stop {:offset "0%" :stop-color color2}]
-             [:stop {:offset "100%" :stop-color color1}]]])
-         (let [color1 "blue"
-               color2 "green"
-               calculate-gradient-degrees
-               (fn [[x1 y1] [x2 y2]]
-                 (let [angle   (Math/atan2 (- y2 y1) (- x2 x1))
-                       degrees (* (/ angle Math/PI) 180)]
-                   degrees))
-
-               calculate-gradient-stops
-               (fn [total-segments current-segment]
-                 (let [start-percent (str (* (/ current-segment total-segments) 100) "%")
-                       end-percent   (str (* (/ (inc current-segment) total-segments) 100) "%")]
-                   [start-percent end-percent]))
-
-               calculate-gradient
-               (fn [coord1 coord2 total-segments current-segment]
-                 (let [degrees                     (calculate-gradient-degrees coord1 coord2)
-                       [start-percent end-percent] (calculate-gradient-stops total-segments current-segment)]
-                   [:linearGradient {:id (str coord1 coord2)}
-                    [:stop {:offset start-percent :stop-color color1}]
-                    [:stop {:offset end-percent :stop-color color2}]]))]
-           (when concluding-witness?
-             (let [received-evts (get (hg/round-whether-received-events top-witness r) true)
-                   ordered-evts  (hg/order-events top-witness received-evts)
-                   x             (idx-view-position-x hg-members/members-count)]
-               [:g
-                [:path {:d      (apply str
-                                       "M " (evt-view-position-x (first ordered-evts)) " " (evt-view-position-y (first ordered-evts)) " "
-                                       (map (comp (fn [[x y]]
-                                                    (str "L " x " " y " "))
-                                                           evt-view-position) (rest ordered-evts)))
-                                 :stroke :blue #_ "url(#even-round-color)"
-                                 :fill   :transparent}]
-
-                         (when (not-empty ordered-evts)
-                           #_(for [[idx ordered-evt] (map-indexed (fn [idx e] [idx e]) ordered-evts)]
-                               (if (> idx 0)
-                                 (let [prev-evt        (get ordered-evts (dec idx))
-                                       [prev-x prev-y] (evt-view-position (spy prev-evt))
-                                       [this-x this-y] (evt-view-position ordered-evt)]
-                                   [:line {:x1    prev-x
-                                           :y1    prev-y
-                                           :x2    this-x
-                                           :y2    this-y
-                                           :style {:stroke       :gold
-                                                   :stroke-width "2px"}}])))
-                           (let [y-start (apply max (map evt-view-position-y (hg/round-witnesses top-witness (dec r))))]
-                             (for [[idx received-evt] (map-indexed (fn [idx evt] [idx evt]) ordered-evts)
-                                   :let               [member (-> received-evt :event/creator hg-members/members)
-                                                       pad 4
-                                                       y (-> y-start
-                                                             (+ (/ evt-view-s 2))
-                                                             (+ pad)
-                                                             (+ (* idx (+ evt-view-s pad))))]]
-                               (event-view {:evt    received-evt
-                                            :coords [x y]
-                                            :big    false
-                                            :color  "gray"}))))])))])]]
-             ))
+        (event-view evt-info))]]))
 
 
 (rum/defc viz-wrapper
