@@ -15,8 +15,8 @@
         weavejester/dependency {:mvn/version "0.2.1"}
         io.github.nextjournal/clerk {:mvn/version "0.15.957"}
         arrowic/arrowic {:mvn/version "0.1.1"}
-
-}
+        net.clojars.john/cljs-thread {:mvn/version "0.1.0-alpha.4"}
+        }
 
  :aliases {:clerk {:main-opts ["-m" "hashgraph.clerk"]}
            :cljs {:extra-paths ["src/dev-cljs/" "src/test/"]

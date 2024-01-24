@@ -1,6 +1,7 @@
 (ns hashgraph.app.infini-events
   (:require [rum.core :as rum]
             [hashgraph.app.events :as hga-events]
+            [hashgraph.utils :refer-macros [l]]
             [taoensso.timbre :refer-macros [spy]]))
 
 (def load-area-height 200)
@@ -32,23 +33,10 @@
               (hga-events/issue!)))))
       state)}))
 
-(defn infini-issue []
-  (hga-events/issue!)
-  (infini-issue))
-
 #_#_(defonce *scroll-top (atom 0))
 (defonce *dom-node (atom nil))
 
-(def viz-height
-  (memoize
-   (fn [creator-hg-map]
-     (let [highest-y
-           (some-> creator-hg-map
-                   vals
-                   (->> (map hga-events/evt-view-position-y))
-                   (some->> (apply max))
-                   (or 0))]
-       (+ highest-y (* 2 load-area-height))))))
+
 
 #_(def *issue-more-events?
   (rum/derived-atom [hga-events/*creator-hg-map *scroll-top *dom-node] ::*issue-more-events?
@@ -66,6 +54,15 @@
       (js/console.log "needs more events, issuing!")
       (hga-events/issue!))))
 
+(defn ->viz-height [creator->hg]
+  (-> creator->hg
+      vals
+      (->> (map hga-events/evt-view-position-y)
+           (sort))
+      last
+      (+ (* 2 load-area-height))))
+
+#_
 (def mixin
   (merge
    (rum/local 0 :*scroll-top)

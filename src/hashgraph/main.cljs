@@ -3,65 +3,58 @@
    :exclude [parents])
   (:require [cljs.math :refer [floor ceil]]
             [hashgraph.members :as hg-members]
-            [hashgraph.utils :refer-macros [defnm defnml]]
+            [hashgraph.utils :refer-macros [defn* defnm defnml l cl] :refer [*mem* *from-mem*]]
             [hashgraph.utils2 :refer-macros [td time3]]
-            [hashgraph.app.inspector :refer [log-relative log! log-set! log-flush!] :as hga-inspector]
+            [hashgraph.app.inspector :refer [log! log-set! log-flush!] :as hga-inspector]
             [taoensso.timbre :refer-macros [spy] :refer [log info]]
-            [taoensso.tufte :as tufte :refer [defnp p pspy profiled profile]]
+            [taoensso.tufte :as tufte :refer [defnp fnp p pspy profiled profile]]
             [clojure.set :refer [union] :as set]))
 
+;; perhaps put it in restart of app
+;; or make log evergreen.. which can't be the case, since logic change
 (log-flush!)
 
-;; (system-time)
-;; (cljs.pprint/pprint (macroexpand-1 '(time3 (doall (range 1 10000)))))
-;; (cljs.pprint/pprint (macroexpand '(td3 100 (range 1 100000))))
-;; (js* "debugger;")
-;; (td3 101 (and (reduce + 0 (range 1 10000000)) 1))
-;; (td3 100 (+ 1 1))
-;; (macroexpand-1 (== 1 1))
-(defn oho []
-  (let [a (+ 1 1)
-        b (* a a)]
-    (+ a b (td 1 (reduce + (range 1 100000))))
-    ))
-;; (time (range 1 10000))
-;; (oho)
+;; no point in memoize, it'll be more costly than looking up from x
+(def creator :event/creator)
+(def self-parent :event/self-parent)
+(def other-parent :event/other-parent)
 
-(def creator (memoize (fn [x] (:event/creator x))))
-(def self-parent (memoize (fn [x] (:event/self-parent x))))
-(def other-parent (memoize (fn [x] (:event/other-parent x))))
-
-(def parents
+(defn parents
   "Set of events that are parents of x."
-  (memoize
-   (fn [x]
-     (cond-> #{}
-       (other-parent x) (conj (other-parent x))
-       (self-parent x) (conj (self-parent x))))))
+  [x]
+  (cond-> #{}
+    (other-parent x) (conj (other-parent x))
+    (self-parent x)  (conj (self-parent x))))
 
-(def self-parent? (memoize (fn [x y] (= (self-parent x) y))))
-(def other-parent? (memoize (fn [x y] (= (other-parent x) y))))
+(defn self-parent?  [x y] (identical? (self-parent x) y))
+(defn other-parent? [x y] (identical? (other-parent x) y))
 
-(def parent?
-  (memoize
-   (fn [x y]
-     (or (self-parent? x y)
-         (other-parent? x y)))))
+(defn parent? [x y]
+  (or (self-parent? x y)
+      (other-parent? x y)))
 
-(def ancestor?
-  (memoize
-   (fn [x y]
-     (or (parent? x y)
-         #_(some-> (self-parent x) (ancestor? y))
-         #_(some-> (other-parent x) (ancestor? y))
-         (some #(ancestor? % y) (parents x))))))
+(defn* ^:memoizing ancestors
+  [x]
+  (cond-> #{}
+    (self-parent x) (-> (conj (self-parent x))
+                        (into (ancestors (self-parent x))))
+    (other-parent x) (-> (conj (other-parent x))
+                         (into (ancestors (other-parent x))))))
 
-(def self-ancestor?
-  (memoize
-   (fn [x y]
-     (and (some? (self-parent x))
-          (or (self-parent? x y)
-              (self-ancestor? (self-parent x) y))))))
+(defn* ancestor? ;; damm costly, don't use
+  [x y]
+  (contains? (ancestors x) y)
+  #_(or (parent? x y)
+      (some-> (self-parent x) (ancestor? y))
+      (some-> (other-parent x) (ancestor? y))
+      #_(some #(ancestor? % y) (parents x))))
+
+#_
+(defn* self-ancestor?
+  [x y]
+  (and (some? (self-parent x))
+       (or (self-parent? x y)
+           (self-ancestor? (self-parent x) y))))
 
 #_
 (def many-creators?
@@ -111,6 +104,7 @@
   (memoize (fn [evts]
              (->> evts (into #{} (remove (fn [x] (some (fn [y] (self-parent? x y)) evts))))))))
 
+#_
 (def index
   "Index position of event x, as max of index position of self-parent and parent"
   (memoize
@@ -148,14 +142,21 @@
                  (> 1))
          (some->> y self-parent (in-fork? x))))))
 
-(def see?
-  (memoize
-   (fn [x y]
-     (or (= x y)
-         (ancestor? x y))
-     #_(and
-        (not (in-fork? x y))))))
+#_
+(defn* ^:memoizing see
+  [x]
+  (apply set/union
+         #{x}
+         (map #(see %) (parents x))))
 
+(defn* see?
+  [x y]
+  ;; TODO add not in fork
+  (or (identical? x y)
+      (ancestor? x y) #_(contains? (see x) y)
+      #_(ancestor? x y)))
+
+#_
 (def ->seen-by
   "Events that seen y, as known to x."
   (memoize
@@ -168,7 +169,8 @@
        (some-> (other-parent x) (see? y)) (into (->seen-by (other-parent x) y))))))
 
 (declare many-stake)
-(declare ?concluded-round->stake-map)
+(declare concluded-round->stake-map)
+#_
 (def see-many-see? ;; strongly-see
   "Whether x see many stake from events that see y."
   (memoize
@@ -176,6 +178,7 @@
      (let [seen-by (->seen-by x y)
            seen-stake (reduce + 0 (map (comp (?concluded-round->stake-map ?cr) :event/creator) seen-by))] ;; TODO make creators distinct
        (> seen-stake many-stake)))))
+
 
 #_#_
 (def merge-rws (fn [& rws] (apply merge-with #(merge-with into %1 %2) rws)))
@@ -187,8 +190,8 @@
        {1 {x #{(creator x)}}}
 
        (let [merged-r-w-sb (-> (parents x)
-                            (->> (map (fn [px] (round->witnesses->seen-by-creators px ?cr)))
-                                 (apply merge-rws)))
+                               (->> (map (fn [px] (round->witnesses->seen-by-creators px ?cr)))
+                                    (apply merge-rws)))
              max-r      (-> merged-r-w-sb keys (->> (apply max)))
              max-r-w-sb (get merged-r-w-sb max-r)
              ;; add seen-by creator
@@ -211,228 +214,381 @@
            {(inc max-r) {x #{(creator x)}}}
 
            ;; became witness in this round?
-           (not (some (fn [[w _s]] (= (creator w) (creator x))) new-max-r-w-sb))
+           (not (some (fn [[w _s]] (identical? (creator w) (creator x))) new-max-r-w-sb))
            {max-r (assoc new-max-r-w-sb x #{(creator x)})}
 
            ;; collect-my-seeing
            :else
            {max-r new-max-r-w-sb}))))))
 
-(declare round-witnesses)
 
-;; TODO perhaps rename to ->round
-(def round ;; see-many-see-many-see ;; see-many-strongly-see
+
+
+
+#_(let [?prev-cr    (:concluded-round/prev-concluded-round cr)
+        ?prev-round (->round x ?prev-cr nil)]
+    (when (some-> ?prev-round :round/final?)
+      ?prev-round))
+
+#_
+(cljs.pprint/pprint
+ (macroexpand
+  '(defnml my-fn
+     "docstring"
+     ([a] (reduce + (range 1000000)) *mem*))))
+#_
+(do
+  (let [m-tr (transient (hash-map))
+        n    10000]
+    (doall (map #(assoc! m-tr % %) (range 0 n)))
+    (time (doall (map #(get m-tr %) (range 0 n))))
+    1)
+
+  (let [m-tr (hash-map)
+        n    10000]
+    (doall (map #(assoc m-tr % %) (range 0 n)))
+    (time (doall (map #(get m-tr %) (range 0 n))))
+    1))
+
+;; Which events see which events are accumulating, detected forks affect future seeing.
+;; Which events strongly see which events, based on previous cr, are also accumulating.
+;; Which events strongly see many which events, giving next round number, based on previous cr, are accumulating.
+;; Votes are also accumulating.
+;; Many votes conclusion is accumulating.
+;; Round votes conclusion is accumulating.
+;;
+;; In the end, we have event->derived-state.
+;; Pro: all relevant info is kept on the tip, efficient and easy to reason.
+;; Cons: to lookup info for y, for viz, we need to lookup x that gave that info.
+;;
+;; Problem: Lookup of round y event, as of some descendant x.
+;;   Requirements:
+;;     1. efficient.
+;;     2. does not sacrifice performance of core algorithm in favore of performance of viz.
+;;
+;;   Solution: tip+in-view-ys->x, so x event is the one that concluded everything for top events in view.
+;;     Pro: this way we won't memoize derived-info for subsequent way-out-of-view tip events.
+;;     Cons: set of in-view-events is huge.
+;;     Implementation:
+;;       1. have index tip+y->x, where x will become fixed at some point, as no more sebsequent events can add anything new for y.
+;;          This is similar to how ?cr's round finality gets adopted, and other finality, for vote, votes, concluded round.
+;;       2. Similarly to concluded round, each event holds only novel info in their derived-state, which includes self-parent's derived-state.
+;;          I.e., we have a chain of derived-info.
+;;          Pro: lookup of prev derived-info is near-instant.
+;;          And an index x->derived-info, core index is to keep only for (self-parent tip), viz index is to keep for all x.
+;;       3. Then, we would iterate down derived-state, dropping non-contributing ones, until the one giving info for some in-view top events.
+;;          I.e., tip+in-view-top-ys->x. Viz index.
+;;                And, underneath, tip+y->x, taking max x.
+;;       4. Then, for an in-view parents of in-view-top-y, we can get its x, by (tip+y->x max-x y)
+;;       Pro: seems to keep individual indexes more compact.
+;;       Pro: view indexes are separate from main indexes.
+;;       Cons: complex logic.
+;;
+;;   cr is what affects strongly-see, and subsequent round, vote, votes, round conclusion of y,
+;;   Solution: cr+y->round
+
+
+(declare ->round-info)
+
+(defn* ^{:memoizing {:bind {:->in-mem? ->in-mem?
+                            :->from-mem ->from-mem}}}
+  ->round ;; see-many-see-many-see ;; see-many-strongly-see
   "Round number of y, as known to a previous round concluded x.
    It's either 1 if y has no parents,
    or a max round of events strongly seen by many (as known to x) +1."
-  (memoize
-   (fn
-     ([x ?cr]
-      (:round/number (round x ?cr nil)))
-     ([x ?cr ?acc]
-      (if (empty? (parents x))
-        {:round/event  x
-         :round/number 1
-         :round/final? true}
-        (or (when-let [cr ?cr]
-              (let [?prev-cr   (:concluded-round/prev-concluded-round cr)
-                    prev-round (round x ?prev-cr nil)]
-                (assoc prev-round :round/from-?cr cr)
-                (when (:round/final? prev-round)
-                  prev-round)))
-            (let [max-pr       (apply max (map #(round % ?cr) (parents x)))
-                  max-pr-ws    (cond-> #{}
-                                 (some-> (self-parent x)  (round ?cr) (= max-pr)) (set/union (round-witnesses (self-parent  x) max-pr ?cr))
-                                 (some-> (other-parent x) (round ?cr) (= max-pr)) (set/union (round-witnesses (other-parent x) max-pr ?cr)))
-                  stake-map    (?concluded-round->stake-map ?cr)
-                  round-number (cond-> max-pr
-                                 (-> max-pr-ws
-                                     (->> (filter (fn [w] (see-many-see? x w ?cr)))
-                                          (map (comp stake-map :event/creator))
-                                          (reduce + 0))
-                                     (> many-stake))
-                                 inc)
+  [x cr]
 
-                  ;; Once round r is settled, the _future_ rounds will reshuffle,
-                  ;; and the calculations for round r + 1 famous witnesses will be done using the new stake record.
-                  ;; source: https://hyp.is/QxYPUqyAEe6hUtsMYuakKQ/www.swirlds.com/downloads/SWIRLDS-TR-2016-01.pdf
+  ;; To efficiently compute round x we need to cater for two cases:
+  ;; 1. When new cr arrives => rounds that been final need not be re-computed.
+  ;; 2. When new event arrives => it's round will be atop max parent's cr. Since it's round will be atop max parent's round, a continuation of it's compute.
+  ;;
+  ;; To cater for 1, we can memoize round and it's finality as of some cr, and adopt final round in successive crs. Previous round can be looked up from mem.
+  ;; To cater for 2, we can recur down the parents to find the latest final round, and run from it's cr.
+  ;;
+  ;; Joined algorithm will look like:
+  ;; 1. When there's mem for the event, lookup the highest cr that event been run on from mem, if it's final - adopt immediately, else - run from the cr atop it.
+  ;; 2. Learn max parents' cr, carry on from it.
 
-                  ;; So, once there is a cr that gave round number less or equal to cr - it's final.
-                  ;; We need _less_ for cases, when stake changed, and more events received cr's round number.
-                  round-final? (<= round-number (or (inc (:concluded-round/r ?cr)) 1))]
-              {:round/event     x
-               :round/number    round-number
-               :round/final?    round-final?
-               :round/max-pr    max-pr
-               :round/max-pr-ws max-pr-ws
-               :round/stake-map stake-map
-               :round/?cr       ?cr}
+  ;; 1. new cr - lookup whether final
+  ;; TODO lookup if no mem exist first
+  (let [[prev-round-mem prev-cr]
+        #_(when-let [x-mem (get mem x)]
+          (->> ?cr
+               :concluded-round/prev-concluded-round ;; this fn would not be executed on a memoized ?cr
+               (iterate :concluded-round/prev-concluded-round)
+               (take-while some?)
+               (some (fn [cr]
+                       (when-let [round-mem (get x-mem cr)] ;; doesn't lookup nil cr
+                         [round-mem cr])))))
+        (->> cr
+             :concluded-round/prev-concluded-round ;; this fn would not be executed on a memoized cr
+             (iterate :concluded-round/prev-concluded-round)
+             (take-while some?)
+             ;; perhaps take n crs to check, e.g., 5, not all, to limit otheriwse increasing cost as crs become many
+             (some (fn [cr]
+                     (when (->in-mem? [x cr])
+                       [(->from-mem [x cr]) cr]))))]
+    ;; Once round r is settled, the _future_ rounds will reshuffle,
+    ;; and the calculations for round r + 1 famous witnesses will be done using the new stake record.
+    ;; source: https://hyp.is/QxYPUqyAEe6hUtsMYuakKQ/www.swirlds.com/downloads/SWIRLDS-TR-2016-01.pdf
 
-              #_(log :debug {:max-pr max-pr :max-pr-ws max-pr-ws :stake-map stake-map :x x :?cr ?cr})
-              )
-            #_
-            (-> (round->witnesses->seen-by-creators x ?cr)
-                keys
-                first))))
+    ;; So, once there is a cr that gave round number less or equal to cr+1 - it's final.
+    ;; We need _less_ for cases when stake changed and more events received cr's round number.
+    (or (when (:round/final? prev-round-mem)
+          prev-round-mem)
 
-     #_
-     (-> x
-         events
-         (->> (filter (fn [y] (see-many-see? x y)))
-              (group-by round)
-              (filter (comp many-creators? val))
-              (map first))
-         (some->> not-empty (apply max) inc)
-         (or 1)))))
+        ;; 2. new event (or not cr not final)
+        ;; or max parent's cr gives final round or the one after
+        ;; but it's not guaranteed that parents have final rounds
+        ;; and we'd like to memo for all crs anyways, so run from max parents' cr
+        (let [p-rounds  (map (fn [p] (->round p cr)) (parents x))
+              p-?crs    (->> p-rounds (map :round/cr))
+              p-max-?cr (->> p-?crs
+                             (sort-by :concluded-round/r)
+                             last)
+              crs-to-try
+              (->> cr
+                   (iterate :concluded-round/prev-concluded-round)
+                   (take-while some?)
+                   (take-while (fn [cr] (and (not (identical? cr p-max-?cr))
+                                             #_(not (identical? cr prev-cr)))))
+                   reverse)]
+          (or (->> crs-to-try
+                   (some (fn [cr] (let [cr-round (->round-info x cr)]
+                                    (when (:round/final? cr-round) cr-round)))))
+              (->round-info x cr))))))
 
-(def witness?
+(defn* ^:memoizing ->round-info
+  [x cr]
+  (let [stake-map (concluded-round->stake-map cr)
+        xc        (creator x)
+        xc-stake  (get stake-map xc)
+        ?spx       (self-parent x)
+        ?opx       (other-parent x)]
+    (if (and (nil? ?spx)
+             (nil? ?opx)) ;; will add (little) cost to all non-bottom events
+      {:round/event    x
+       :round/number   1
+       :round/final?   true
+       ;; many see many see (true) or witness creator -> many see (true) or seen by creators set
+       :round/wc->sbcs {xc (with-meta #{xc} xc-stake)}
+       :round/cr       cr}
+
+      (let [?spx-round (some-> ?spx (->round cr))
+            ?opx-round (some-> ?opx (->round cr))
+            max-p-r    (max (some-> ?spx-round :round/number)
+                            (some-> ?opx-round :round/number))
+
+            both-eligible? (= (:round/number ?spx-round)
+                              (:round/number ?opx-round))
+            max-p-round    (max-key :round/number ?opx-round ?spx-round)
+            acc            (if both-eligible?
+                             (-> ?spx-round :round/wc->sbcs)
+                             (if (identical? max-p-round ?opx-round)
+                               {xc (with-meta #{xc} xc-stake)} ;; we're continuing opx-round, become a witness
+                               {}))
+            to-reduce      (if both-eligible?
+                             (-> ?opx-round :round/wc->sbcs)
+                             (:round/wc->sbcs max-p-round))
+
+            wc->sbcs
+            ;; Not pretty, but pretty efficient
+            (reduce (fn [wc->sbcs-acc [wc op-sbcs]]
+                      (let [sbcs-acc (get wc->sbcs-acc wc)]
+                        (if (identical? sbcs-acc true)
+                          wc->sbcs-acc
+
+                          (if (identical? op-sbcs true)
+                            (let [new-wcs-stake (+ (meta wc->sbcs-acc) (get stake-map wc))]
+                              (if (> new-wcs-stake many-stake)
+                                (reduced true)
+                                (-> wc->sbcs-acc
+                                    (assoc wc true)
+                                    (with-meta new-wcs-stake))))
+
+                            (if (= sbcs-acc op-sbcs)
+                              wc->sbcs-acc
+
+                              ;; carry on compute from previous biggest sbcs
+                              (let [sbcs-acc       (or sbcs-acc (with-meta #{xc} xc-stake))
+                                    sbcs-acc-count (count sbcs-acc)
+                                    op-sbcs-count  (count op-sbcs)
+                                    biggest        (if (> sbcs-acc-count op-sbcs-count)
+                                                     sbcs-acc
+                                                     op-sbcs)
+                                    smallest       (if (> sbcs-acc-count op-sbcs-count)
+                                                     op-sbcs
+                                                     sbcs-acc)
+                                    new-sbcs-acc
+                                    (reduce (fn [biggest-sbcs-acc sbc]
+                                              (if (biggest-sbcs-acc sbc)
+                                                biggest-sbcs-acc
+                                                (let [new-biggest-sbcs-acc-stake (+ (meta biggest-sbcs-acc) (get stake-map sbc))]
+                                                  (if (> new-biggest-sbcs-acc-stake many-stake)
+                                                    (reduced true)
+                                                    (-> biggest-sbcs-acc
+                                                        (conj sbc)
+                                                        (with-meta new-biggest-sbcs-acc-stake))))))
+                                            biggest
+                                            smallest)]
+                                (if (identical? new-sbcs-acc true)
+                                  (let [new-wcs-stake (+ (meta wc->sbcs-acc) (get stake-map wc))]
+                                    (if (> new-wcs-stake many-stake)
+                                      (reduced true)
+                                      (-> wc->sbcs-acc
+                                          (assoc wc true)
+                                          (with-meta new-wcs-stake))))
+                                  (assoc wc->sbcs-acc wc new-sbcs-acc))))))))
+                    acc
+                    to-reduce)
+            r-next?      (identical? wc->sbcs true)
+            r            (if r-next?  (inc max-p-r) max-p-r)
+            round-final? (<= r (or (inc (:concluded-round/r cr)) 1))]
+
+        {:round/event    x
+         :round/number   r
+         :round/final?   round-final?
+         :round/wc->sbcs (if r-next?
+                           {xc (with-meta #{xc} xc-stake)}
+                           wc->sbcs)
+         :round/cr       cr}))))
+
+(defn ->round-number
+  [x cr]
+  (:round/number (->round x cr)))
+
+
+(defn witness?
   "Whether y is a witness, as known to x."
-  (memoize
-   (fn
-     #_ ([x] (witness? x x)) ;; commented to ensure I upgrade
-     ([x ?cr]
-      (or (nil? (self-parent x))
-          (< (round (self-parent x) ?cr)
-             (round x ?cr)))))))
+  [x cr]
+  (or (nil? (self-parent x))
+      (< (->round-number (self-parent x) cr)
+         (->round-number x cr))))
 
-(def rounds-diff
+(defn rounds-diff
   "Rounds diff between y and z, as known to x."
-  (memoize
-   (fn [x y ?cr]
-     (- (round x ?cr)
-        (round y ?cr)))))
+  [x y cr]
+  (- (->round-number x cr)
+     (->round-number y cr)))
 
 (def d 1) ;; round in which voting starts
 (def c 10) ;; each c's round is a coin flip round
-(def voting-round?
-  (memoize
-   (fn [x y ?cr] (> (rounds-diff x y ?cr) d))))
+(defn voting-round?
+  [x y cr]
+  (> (rounds-diff x y cr) d))
 
-(def voting-coin-flip-round?
-  (memoize
-   (fn
-     [x y ?cr]
-     (and (voting-round? x y ?cr)
-          (-> (rounds-diff x y ?cr) (mod c) (= 0))))))
+(defn voting-coin-flip-round?
+  [x y cr]
+  (and (voting-round? x y cr)
+       (-> (rounds-diff x y cr) (mod c) (= 0))))
 
 (defn signature [evt] (:signature evt))
 (defn middle-bit [_sig] 1)
 
-(def self-witness
+(defn self-witness
   "Self-witness of y, as known to concluded witness."
-  (memoize
-   (fn [x ?cr]
-     (cond (nil? (self-parent x))         nil
-           (witness? (self-parent x) ?cr) (self-parent x)
-           :else                          (self-witness (self-parent x) ?cr)))))
+  [x cr]
+  (cond (nil? (self-parent x))        nil
+        (witness? (self-parent x) cr) (self-parent x)
+        :else                         (self-witness (self-parent x) cr)))
 
-(def witness-or-self-witness
-  (memoize
-   (fn [x ?cr]
-     (or (and (witness? x ?cr)
-              x)
-         (self-witness x ?cr)))))
+(defn witness-or-self-witness
+  [x cr]
+  (if (witness? x cr)
+    x
+    (self-witness x cr)))
 
-(def round-witnesses
+#_#_
+(def ^:dynamic *rws* nil)
+(defn* ^:memoizing ->round-witnesses* [x r ?cr]
+  (let [x-r (->round-number x ?cr)]
+    (when (and (= x-r r)
+               (witness? x ?cr))
+      (conj! *rws* x))
+    (when (>= x-r r)
+      (some-> (self-parent x) (->round-witnesses* r ?cr))
+      (some-> (other-parent x) (->round-witnesses* r ?cr)))))
+
+#_
+(defn* ^:memoizing ->round-witnesses [x r ?cr]
+  (binding [*rws* (transient [])]
+    (->round-witnesses* x r ?cr)
+    (distinct (persistent! *rws*))))
+
+(defn* ^:memoizing round-witnesses
   "Round r witnesses, known to y, as known to x."
-  (memoize
-   (fn [x r ?cr]
-     #_(js* "debugger;")
-     (cond-> #{}
-       (and (= (round x ?cr) r) ;; can be optimized to not run if round > r
-            (witness? x ?cr)) (conj x)
-       (>= (round x ?cr) r)   (cond->
-                                       (self-parent  x) (set/union (round-witnesses (self-parent  x) r ?cr))
-                                       (other-parent x) (set/union (round-witnesses (other-parent x) r ?cr)))))))
+  [x r cr]
+  (cond-> #{}
+    (and (= (->round-number x cr) r) ;; can be optimized to not run if round > r
+         (witness? x cr))
+    (conj x)
+
+    (>= (->round-number x cr) r)
+    (cond->
+        (self-parent  x) (set/union (round-witnesses (self-parent  x) r cr))
+        (other-parent x) (set/union (round-witnesses (other-parent x) r cr)))))
+
+(defn* ^:memoizing ->round-witness->seen-by-creators
+  "Round r witnesses to seen by creator map, as known to x, based on a ?cr."
+  [x r cr]
+  (cond-> {}
+    (and (= (->round-number x cr) r) ;; can be optimized to not run if round > r
+         (witness? x cr))
+    (assoc x #{(:event/creator x)})
+
+    (>= (->round-number x cr) r)
+    (cond->>
+        (self-parent  x) (merge-with set/union (->round-witness->seen-by-creators (self-parent  x) r cr))
+        (other-parent x) (merge-with set/union (->round-witness->seen-by-creators (other-parent x) r cr))
+        :add-self        (into {} (map (fn [[rw sb-cs]] [rw (conj sb-cs (:event/creator x))]))))))
 
 (declare many-stake)
 (declare votes-stake-true)
-#_
-(def round-unique-famous-witnesses
-  (memoize
-   (fn [witness-concluded round-concluded]
-     (let [rws (round-witnesses witness-concluded round-concluded)
-           stake-map (witness-concluded+round-concluded->stake-map )]
-       (->> rws
-            (filter (fn [rw] (> (votes-stake-true witness-concluded rw stake-map) many-stake))))))))
+
+(defn* ^:memoizing
+  ->event->learned-member->learned-event
+  "Events learned by creator learned by event, as known to x.
+   {event {learned-by-member learned-by-event}}"
+  [x]
+  (let [m            (:event/creator x)
+        sp-e->lm->le (or (some-> (self-parent x) ->event->learned-member->learned-event)
+                         {})
+        op-e->lm->le (or (some-> (other-parent x) ->event->learned-member->learned-event)
+                         {})
+        e->lm->le    (merge-with merge
+                                 sp-e->lm->le
+                                 op-e->lm->le)]
+    (-> e->lm->le
+        (->> (into {} (map (fn [[e lm->le]]
+                             [e (cond-> lm->le
+                                  (not (get lm->le m)) (assoc m x))]))))
+        (assoc x {m x}))))
 
 #_
-(def round-events
-  "Events that are the same round as y, as known to x."
-  (memoize
-   (fn
-     [x r cr]
-     (cond-> #{}
-       (= (round x cr) r) ;; can be optimized to not run if round > r
-       (conj x)
-
-       (>= (round x cr) r)
-       (cond->
-           (self-parent  x) (into (round-events (self-parent  x) r cr))
-           (other-parent x) (into (round-events (other-parent x) r cr)))))))
-
-#_
-(def evt-learned-by-evts-map
-  "Return a map of events to events that learned about them (have it as other-parent), as known to x."
-  (memoize
-   (fn [x]
-     )))
-
-#_
-(profile
- {}
- (let [arg [(set (range 0 10000))
-            (set (range 5000 15000))
-            (set (range 10000 20000))
-            ]]
-   (doall (repeatedly 100 #(p ::union (doall (apply clojure.set/union arg)))))
-   (doall (repeatedly 100 #(p ::reduce (doall (reduce into #{} arg)))))
-   :finished))
-;; union is generally faster than reduce
-;; TODO check sets vs transducers for difference vs distinct + remove
-
-#_
-(defn merge-es-lm-le [& es-lm-les]
-  (apply merge-with merge es-lm-les))
-
-#_
-(def
-  events-learned-member-learned-event-map
-  (memoize
-   (fn [x]
-     (let [m (:event/creator x)
-           sp-es-lm-le (or (some-> (self-parent x) events-learned-member-learned-event-map)
-                                    {})
-           op-es-lm-le (or (some-> (other-parent x) events-learned-member-learned-event-map)
-                                    {})
-           es-lm-le (merge-es-lm-le
-                     sp-es-lm-le
-                     op-es-lm-le)]
-       (-> es-lm-le
-           (->> (into {} (map (fn [[e lm-le]]
-                                [e (cond-> lm-le
-                                     (not (get lm-le m))
-                                     (update lm-le m x))]))))
-           (cond-> (other-parent x)
-             (assoc (other-parent x) {m x})))))))
+(defn* ^:memoizing
+  ->learned-events
+  "Events that learned of y, as known to x."
+  [x y]
+  (-> (->event->learned-member->learned-event x)
+      (get y)
+      vals))
 
 
-(def make-vote
-  (memoize
-   (fn [?cr from-event to-event vote-type vote-value & [vote-rest]]
-     (let [stake-map (?concluded-round->stake-map ?cr)]
-       (merge
-        {:vote/from-event from-event
-         :vote/to-event   to-event
-         :vote/type       vote-type
-         :vote/value      vote-value
-         :vote/stake      (get stake-map (:event/creator from-event))
-         :vote/stake-map  stake-map
-         :vote/?prev-concluded-round ?cr}
-        vote-rest)))))
+(defn make-vote
+  [cr from-event to-event vote-type vote-value & [vote-rest]]
+  (let [stake-map (concluded-round->stake-map cr)]
+    (merge
+     {:vote/from-event           from-event
+      :vote/to-event             to-event
+      :vote/type                 vote-type
+      :vote/value                vote-value
+      :vote/stake                (get stake-map (:event/creator from-event))
+      :vote/stake-map            stake-map
+      :vote/prev-concluded-round cr}
+     vote-rest)))
 
-(def vote-see? (memoize (fn [x y ?cr] (= (rounds-diff x y ?cr) 1))))
-(def vote-see (memoize (fn [x y ?cr] (make-vote ?cr x y :see (boolean (see? x y))))))
+(defn vote-see? [x y cr] (= (rounds-diff x y cr) 1))
+(defn vote-see  [x y cr] (make-vote cr x y :see (boolean (see? x y))))
 
 (declare ->?concluded-voting)
 (declare vote)
@@ -449,61 +605,57 @@
 
 (declare votes-stake-fract-true)
 (declare many-stake)
-(def vote-coin-flip?
-  (memoize
-   (fn [x y ?cr]
-     (and (voting-coin-flip-round? x y ?cr)
-          (>= (votes-stake-fract-true x y ?cr) (-> many-stake (/ 3)))
-          (<= (votes-stake-fract-true x y ?cr) (-> many-stake (/ 3) (* 2)))))))
+(defn* vote-coin-flip?
+  [x y cr]
+  (and (voting-coin-flip-round? x y cr)
+       (>= (votes-stake-fract-true x y cr) (-> many-stake (/ 3)))
+       (<= (votes-stake-fract-true x y cr) (-> many-stake (/ 3) (* 2)))))
 (defn vote-coin-flip [x y cr] (make-vote cr x y :coin-flip (= 1 (middle-bit (signature x)))))
 
 
-(def vote-for-majority
-  (memoize
-   (fn [x y ?cr] (make-vote ?cr x y :for-majority (>= (votes-stake-fract-true x y ?cr) (/ 1 2))))))
+(defn* vote-for-majority
+  [x y cr] (make-vote cr x y :for-majority (>= (votes-stake-fract-true x y cr) (/ 1 2))))
 
-(def vote
+(defn* vote
   "Vote of y about fame of z, as known to x."
-  (memoize
-   (fn [x y ?cr]
-     (cond (vote-see? x y ?cr)       (vote-see x y ?cr)
-           ;; (vote-copy? x y cr)      (vote-copy x y cr) ;; done in ?concluded-voting?
-           (vote-coin-flip? x y ?cr) (vote-coin-flip x y ?cr)
-           :else                     (vote-for-majority x y ?cr)))))
+  [x y cr]
+  (cond (vote-see? x y cr)       (vote-see x y cr)
+        ;; (vote-copy? x y cr)      (vote-copy x y cr) ;; done in ?concluded-voting?
+        (vote-coin-flip? x y cr) (vote-coin-flip x y cr)
+        :else                    (vote-for-majority x y cr)))
 
-(def votes
+(defn votes
   "Votes on fame of x from witnesses seen by many in the round before x, based on concluded-round."
-  (memoize
-   (fn [x y ?cr]
-     (-> x
-         (round-witnesses (dec (round x ?cr)) ?cr)
-         (->> (filter (fn [w] (see-many-see? x w ?cr)))
-              (map (fn [w] (vote w y ?cr))))))))
+  [x y cr]
+  (let [rw->sb-cs (->round-witness->seen-by-creators x (dec (->round-number x cr)) cr)
+        stake-map (concluded-round->stake-map cr)]
+    (->> rw->sb-cs
+         (filter (fn [[_rw sb-cs]] (-> sb-cs
+                                       (->> (map stake-map)
+                                            (reduce + 0))
+                                       (> many-stake))))
+         (map (fn [[rw _sb-cs]] (vote rw y cr))))))
 
-(declare event->stake)
-(def votes-stake-true
-  (memoize
-   (fn [x y ?cr]
-     ;; TODO maybe switch to transduce
-     (reduce + 0 (map :vote/stake (filter :vote/value (votes x y ?cr)))))))
+(defn votes-stake-true
+  [x y ?cr]
+  ;; TODO maybe switch to transduce
+  (reduce + 0 (map :vote/stake (filter :vote/value (votes x y ?cr)))))
 
-(def votes-stake-false
-  (memoize
-   (fn [x y ?cr]
-     (reduce + 0 (map :vote/stake (remove :vote/value (votes x y ?cr)))))))
+(defn votes-stake-false
+  [x y ?cr]
+  (reduce + 0 (map :vote/stake (remove :vote/value (votes x y ?cr)))))
 
-(def votes-stake-fract-true
-  (memoize
-   (fn [x y ?cr]
-     (let [stake-true (votes-stake-true x y ?cr)
-           stake-false (votes-stake-false x y ?cr)]
-       (/ stake-true
-          (max 1 (+ stake-true stake-false)))))))
+(defn votes-stake-fract-true
+  [x y ?cr]
+  (let [stake-true  (votes-stake-true x y ?cr)
+        stake-false (votes-stake-false x y ?cr)]
+    (/ stake-true
+       (max 1 (+ stake-true stake-false)))))
 
 (declare many-stake)
-(declare ->?concluded-round)
+(declare ->concluded-round)
 
-(defnm ->?concluded-voting
+(defn* ^:memoizing ->?concluded-voting
   "Whether fame of y is concluded, as known to x.
    Fame is concluded when in a regular round there are votes with sum of their stakes more than many stake."
   [x y ?cr]
@@ -524,148 +676,131 @@
               ?conclusion (assoc :concluded-voting/conclusion ?conclusion)))))))
 
 
-(def tries-to-conclude-round?
-  (memoize
-   (fn [x r ?cr]
-     )))
+;; cr       -> rw  -> sbc
+;; cr -> re -> etr -> le
+;; r        -> w   -> sbc
+;; they're about the same - events that learned about an event
 
-(declare concluded-round->received-event)
+
 (declare ?received-event->stake-map)
-(def ->?concluded-round
+(declare concluded-round->event-to-receive->learned-events)
+(declare concluded-round->received-event)
+(declare share-stake-log->stake-map)
+(declare initial-share-stake-log)
+
+;; TODO try with :only-last?
+(defn* ^:memoizing ->concluded-round
   "Whether the round has fame of all it's witnesses concluded,
    and the previous round, if there is one, been concluded, as known to x."
-  (memoize
-   (fn
-     ([x]
-      (let [?prev-concluded-round (some-> (self-parent x) (->?concluded-round))]
-        (->?concluded-round x ?prev-concluded-round)))
-     ([x ?prev-cr]
-      (if (not (witness? x ?prev-cr))
-        ?prev-cr
+  [x]
+  (let [prev-cr (or (some-> (self-parent x) (->concluded-round))
+                    {:concluded-round/r 0
+                     :concluded-round/stake-map (share-stake-log->stake-map initial-share-stake-log)})]
+    (loop [cr prev-cr]
+      (if (not (witness? x cr))
+        cr
 
-        (let [next-cr-r  (inc (:concluded-round/r ?prev-cr))
+        (let [next-cr-r  (inc (:concluded-round/r cr))
               next-crw-r (-> next-cr-r (+ d) inc)
-              wx-r       (round x ?prev-cr)]
-          #_(when (and (= next-cr-r 7)
-                     (< wx-r next-crw-r))
-            (spy [wx wx-r])
-            (js* "debugger;")) ;; huh, no sf reaches round 11 atop prev-cr ?
+              wx-r       (->round-number x cr)]
 
           (if (< wx-r next-crw-r)
-            ?prev-cr
+            cr
 
             ;; x is a witness able to try to conclude
-            (let [ws                      (round-witnesses x next-cr-r ?prev-cr)
-                  maybe-concluded-votings (->> ws (map (fn [w] (->?concluded-voting x w ?prev-cr))))]
+            (let [ws                      (round-witnesses x next-cr-r cr)
+                  maybe-concluded-votings (->> ws (map (fn [w] (->?concluded-voting x w cr))))]
 
               (if-not (every? :concluded-voting/conclusion maybe-concluded-votings)
-                ?prev-cr
+                cr
 
                 (let [ufws    (->> maybe-concluded-votings
                                    (filter (comp #{:famous} :concluded-voting/conclusion))
                                    (map :concluded-voting/about))
-                      next-cr (cond-> {:concluded-round/r                 next-cr-r
-                                       :concluded-round/witness-concluded x
-                                       :concluded-round/ws                ws
-                                       :concluded-round/ufws              ufws
-                                       :concluded-round/concluded-votings maybe-concluded-votings}
-                                ?prev-cr (assoc :concluded-round/prev-concluded-round ?prev-cr))]
-                  ;; try recur
-                  (->?concluded-round x next-cr)))))))))))
+                      next-cr (hash-map :concluded-round/r                    next-cr-r
+                                        :concluded-round/witness-concluded    x
+                                        :concluded-round/ws                   ws
+                                        :concluded-round/ufws                 ufws
+                                        :concluded-round/concluded-votings    maybe-concluded-votings
+                                        :concluded-round/prev-concluded-round cr)
 
-(def ?cr+r->?cr
-  (memoize
-   (fn [?cr r]
-     (assert (pos? r))
-     (cond (or (nil? ?cr)
-               (< (:concludedr-round/r ?cr) r))
-           nil
+                      etr->les (concluded-round->event-to-receive->learned-events next-cr)
+                      es-nr*   (transient [])
+                      es-r*    (transient [])
+                      _        (let [ufws-creators (into #{} (map :event/creator ufws))]
+                                 (doseq [[etr les] etr->les]
+                                   (if (set/subset? ufws-creators (set (map :event/creator les)))
+                                     (conj! es-r* etr)
+                                     (conj! es-nr* etr))))
+                      es-nr    (set (persistent! es-nr*))
+                      es-r     (set (persistent! es-r*))
+                      next-cr  (-> next-cr
+                                   (assoc :concluded-round/etr->les etr->les)
+                                   (assoc :concluded-round/es-nr es-nr)
+                                   (assoc :concluded-round/es-r  es-r))
 
-           (= (:concluded-round/r ?cr) r)
-           ?cr
-
-           :else (recur (:concluded-round/prev-concluded-round ?cr) r)))))
-
-(def x+r->?cr
-  (memoize
-   (fn [x r]
-     (assert (map? x))
-     (assert (pos? r))
-     (?cr+r->?cr (->?concluded-round x) r))))
-
-
-(declare concluded-round->events-not-received)
-(declare ?received-event->stake-map)
-(declare concluded-round->received-event)
-
-(defn l [msg value] (js/console.log msg value) value)
-(def concluded-round->novel-events
-  (memoize
-   (fn
-     ([cr] (let [novel-events (apply set/union (->> (:concluded-round/ws cr)
-                                                    (map (fn [w] (concluded-round->novel-events cr w)))))]
-             novel-events))
-     ([{:concluded-round/keys [prev-concluded-round] :as cr} x]
-      (if-let [novel? (or (nil? prev-concluded-round)
-                          (->> prev-concluded-round
-                               (iterate :concluded-round/prev-concluded-round)
-                               (take-while some?)
-                               (map concluded-round->novel-events)
-                               (some (fn [prev-ne] (contains? prev-ne x)))
-                               not)
-                          #_(-> prev-concluded-round
-                              (concluded-round->novel-events)
-                              (contains? x)
-                              not))]
-            (set/union #{x}
-                       (some->> (self-parent x) (concluded-round->novel-events cr))
-                       (some->> (other-parent x) (concluded-round->novel-events cr)))
-
-        #{})))))
-
-(def concluded-round->whether-events-received
-  "Returns a map from whether received to events in a a concluded round by maybe previous concluded round and concluded votings."
-  (memoize ;; sufficient to memoize only for previous round
-   (fn [{:concluded-round/keys [prev-concluded-round r ufws] :as cr}]
-     (when (nil? (:concluded-round/r cr))
-       (js* "debugger;"))
-     (if (< r 1)
-       {true  #{} ;; redundant, this fn won't be called without a cr
-        false #{}}
-       (let [;; TODO perhaps pass x instead of stake-map
-             ;; TODO move to concluded-round->ufws
-             novel-events      (concluded-round->novel-events cr)
-             events-to-receive (set/union novel-events
-                                          (some-> prev-concluded-round (concluded-round->events-not-received)))
-             ]
-
-         (reduce
-          (fn [acc evt]
-            (let [whether-received (->> ufws (every? (fn [ufw] (ancestor? ufw evt))))]
-              (update acc whether-received conj evt)))
-          {true  #{}
-           false #{}}
-          events-to-receive))))))
-
-(def concluded-round->events-received
-  (memoize
-   (fn [concluded-round]
-     (get (concluded-round->whether-events-received concluded-round) true))))
-
-(def concluded-round->events-not-received
-  (memoize
-   (fn [concluded-round]
-     (get (concluded-round->whether-events-received concluded-round) false))))
+                      last-received-event (concluded-round->received-event next-cr)
+                      next-cr             (-> next-cr
+                                  ;; Here we kinda build cr->deriving-fn-name->derived-value indexes by hand.
+                                  ;; Because it increases performance, compared to deriving-fn-name->cr->derived-value.
+                                  ;; However, it couples code. Now we need to pass this index to deriving-fns, so it can lookup from it efficiently.
+                                  ;; Alternative is to pass context event x.
+                                  ;; Pro of rolling derived-info, is that it's all we need to progress onwards. Current derived-info is all we need to compute the next one.
+                                  ;; Although it's not strictly true, there may be novel pretty old events, to settle on their round we'd need derived info as of that time...
+                                  ;; Con in that for viz we need info about all previous events, not only the latest.
+                                  ;; So we're back to that we need info about y in context of x.
+                                  ;;
+                                  ;; Perhaps instead of building this index by hand, we can make derived out of cr indexes smarter about where they look up from.
+                                  ;; We can derive an index cr->deriving-fn-name->derived-value, and lookup from there.
+                                  ;; We can pass x as context, however, x can conclude multiple rounds, so deriving-fns would need to be parameterized with r to resolve x+r to the corresponding cr.
+                                  (assoc :concluded-round/last-received-event last-received-event)
+                                  (assoc :concluded-round/stake-map (?received-event->stake-map last-received-event)))]
+                  ;; try to conclude next round
+                  (recur next-cr))))))))))
 
 
+(defn* ^:memoizing ->event-to-receive->learned-event ;; will slowdown over time due to mem lookup
+  [x ->to-receive?]
+  (if (->to-receive? x)
+    (let [etr->le* (reduce
+                    (fn [sp-etr->le [op-etr _op-le]]
+                      (if (get sp-etr->le op-etr)
+                        sp-etr->le
+                        (assoc! sp-etr->le op-etr x)))
+                    (transient (or (some-> (self-parent x) (->event-to-receive->learned-event ->to-receive?))
+                                   (hash-map)))
+                    (some-> (other-parent x) (->event-to-receive->learned-event ->to-receive?)))]
+      (-> etr->le*
+          (assoc! x x)
+          persistent!))
 
-(def ->learned-evt
-  "First event of the creator of x that see y."
-  (memoize
-   (fn [x y]
-     (and (see? x y)
-          (or (some-> (self-parent x) (->learned-evt y))
-              x)))))
+    (hash-map)))
+
+(defn* concluded-round->event-to-receive->learned-events
+  [cr]
+  (let [?prev-cr       (:concluded-round/prev-concluded-round cr)
+        ->to-receive?
+        (fn [event]
+          (let [event-r (->round-number event ?prev-cr)
+                ?receiving-cr
+                (first (into []
+                             (comp (take-while some?)
+                                   (drop-while (fn [prev-cr] (>= event-r (:concluded-round/r prev-cr))))
+                                   (drop-while (fn [prev-cr] (let [prev-es-r  (:concluded-round/es-r prev-cr)
+                                                                   prev-es-nr (:concluded-round/es-nr prev-cr)]
+                                                               (and (not (contains? prev-es-r event))
+                                                                    (not (contains? prev-es-nr event)))))))
+                             (iterate :concluded-round/prev-concluded-round ?prev-cr)))
+                received? (some-> ?receiving-cr :concluded-round/es-r (contains? event))]
+            (not received?)))]
+    (->> (:concluded-round/ws cr)
+         (map (fn [w] (->event-to-receive->learned-event w ->to-receive?)))
+         (reduce (fn [acc etr->le]
+                   (reduce (fn [acc2 [etr le]]
+                             (update acc2 etr (fn [les] (conj (or les []) le))))
+                           acc
+                           etr->le))
+                 {}))))
 
 (def median
   (memoize
@@ -704,92 +839,88 @@
                             1 -1)))))
           vec))))
 
-(def concluded-round->received-event
-  (memoize
-   (fn [{:concluded-round/keys [r ufws] :as concluded-round} & [debug?]]
-     (when debug? (js* "debugger;"))
-     (if (= r 1)
-       nil
-       (let [events-received         (concluded-round->events-received concluded-round)
-             received-round-size     (count events-received)
-             ?prev-concluded-round   (:concluded-round/prev-concluded-round concluded-round)
-             ?prev-received-event    (some-> ?prev-concluded-round (concluded-round->received-event))]
+(defn* concluded-round->received-event
+  [{:concluded-round/keys [prev-concluded-round r ufws etr->les es-r] :as concluded-round}]
+  (if (= r 1)
+    nil
+    (let [received-round-size   (count es-r)
+          ?prev-received-event  (some-> prev-concluded-round :concluded-round/last-received-event)]
 
-         (->> events-received
-              (map (fn [er]
-                     (let [learned-by (->> ufws (into #{} (map (fn [ufw] (->learned-evt ufw er)))))
-                           middle-learned-events
-                           (let [len (count learned-by)]
-                             (-> learned-by
-                                 (->> (sort-by :event/creation-time))
-                                 (cond->
-                                     (even? len)
-                                   ((juxt #(nth % (quot len 2)) #(nth % (dec (quot len 2)))))
+      (->> es-r
+           (map (fn [e-r]
+                  ;; TODO perhaps do median calculation on numbers, calcing median members on view side, when required
+                  (let [learned-by (get etr->les e-r)
+                        middle-learned-events
+                        (let [len (count learned-by)]
+                          (-> learned-by
+                              (->> (sort-by :event/creation-time))
+                              (cond->
+                                  (even? len)
+                                ((juxt #(nth % (quot len 2)) #(nth % (dec (quot len 2))))) ;; crashes when none events received ??, e.g., when ufws are none, or no event intersects them
 
-                                   (odd? len)
-                                   ((juxt #(nth % (quot len 2)))))
-                                 (set)))
+                                (odd? len)
+                                ((juxt #(nth % (quot len 2)))))
+                              (set)))
 
-                           received-time (-> middle-learned-events
-                                             (->> (map :event/creation-time)
-                                                  (reduce +))
-                                             (/ (count middle-learned-events)))]
+                        received-time (-> middle-learned-events
+                                          (->> (map :event/creation-time)
+                                               (reduce +))
+                                          (/ (count middle-learned-events)))]
 
-                       {:received-event/learned-by            learned-by
-                        :received-event/middle-learned-events middle-learned-events
-                        :received-event/received-time         received-time
-                        :received-event/concluded-round       concluded-round
-                        :received-event/event                 er})))
+                    {:received-event/learned-by            learned-by
+                     :received-event/middle-learned-events middle-learned-events
+                     :received-event/received-time         received-time
+                     :received-event/concluded-round       concluded-round
+                     :received-event/event                 e-r})))
 
-              (sort-by :received-event/received-time)
+           (sort-by :received-event/received-time)
 
-              (reduce (fn [?prev-received-event re-part]
-                        (let [r-idx (if (some-> ?prev-received-event :received-event/concluded-round :concluded-round/r (= r))
-                                      (-> ?prev-received-event :received-event/r-idx inc)
-                                      1)
+           ;; no value in building a chain of received events
+           ;; TODO just store ordered received events on concluded-round
+           (reduce (fn [?prev-received-event re-part]
+                     (let [r-idx (if (some-> ?prev-received-event :received-event/concluded-round :concluded-round/r (= r))
+                                   (-> ?prev-received-event :received-event/r-idx inc)
+                                   1)
 
-                              ;; TODO perhaps move color calculation into view
-                              palette1 [[38, 70, 83]
-                                        ;; [42, 157, 143]
-                                        [233, 196, 106]
-                                        ;; [244, 162, 97]
-                                        [231, 111, 81]]
+                           ;; TODO perhaps move color calculation into view. Also will allow to change palettes dynamically.
+                           ;; TODO move static stuff outside
+                           palette1 [[38, 70, 83]
+                                     ;; [42, 157, 143]
+                                     [233, 196, 106]
+                                     ;; [244, 162, 97]
+                                     [231, 111, 81]]
 
-                              [rgb1 rgb2 rgb3] palette1
+                           [rgb1 rgb2 rgb3] palette1
 
-                              [from-rgb to-rgb]
-                              (case (mod r 3)
-                                1 [rgb3 rgb1]
-                                2 [rgb1 rgb2]
-                                0 [rgb2 rgb3])
+                           [from-rgb to-rgb]
+                           (case (mod r 3)
+                             1 [rgb3 rgb1]
+                             2 [rgb1 rgb2]
+                             0 [rgb2 rgb3])
 
-                              chroma
-                              (map (fn [from-c to-c]
-                                     (let [upper-c       (max from-c to-c)
-                                           lower-c       (min from-c to-c)
-                                           delta-c       (- upper-c lower-c)
-                                           steps         received-round-size
-                                           steps-delta-c (/ delta-c steps)
-                                           step-delta-c  (* steps-delta-c r-idx)
-                                           c             (if (= upper-c from-c)
-                                                           (- from-c step-delta-c)
-                                                           (+ from-c step-delta-c))]
-                                       (ceil c)))
-                                   from-rgb
-                                   to-rgb)
-                              color (let [[red green blue] chroma]
-                                      (str "rgb(" red "," green "," blue ")"))]
-                          (cond-> (merge re-part
-                                         {:received-event/r-idx r-idx
-                                          :received-event/color color})
-                            ?prev-received-event (assoc :received-event/prev-received-event ?prev-received-event))))
-               ?prev-received-event)))))))
+                           chroma
+                           (map (fn [from-c to-c]
+                                  (let [upper-c       (max from-c to-c)
+                                        lower-c       (min from-c to-c)
+                                        delta-c       (- upper-c lower-c)
+                                        steps         received-round-size
+                                        steps-delta-c (/ delta-c steps)
+                                        step-delta-c  (* steps-delta-c r-idx)
+                                        c             (if (= upper-c from-c)
+                                                        (- from-c step-delta-c)
+                                                        (+ from-c step-delta-c))]
+                                    (ceil c)))
+                                from-rgb
+                                to-rgb)
+                           color (let [[red green blue] chroma]
+                                   (str "rgb(" red "," green "," blue ")"))]
+                       (cond-> (merge re-part
+                                      {:received-event/r-idx r-idx
+                                       :received-event/color color})
+                         ?prev-received-event (assoc :received-event/prev-received-event ?prev-received-event))))
+                   ?prev-received-event)))))
 
-(def ?concluded-round->stake-map
-  (memoize
-   (fn [?cr]
-     (let [?re (some-> ?cr concluded-round->received-event)]
-       (?received-event->stake-map ?re)))))
+(def concluded-round->stake-map :concluded-round/stake-map)
 
 #_
 (def ->?last-received-event
@@ -798,13 +929,7 @@
      #_(assert (witness? wx))
      (when-let [last-concluded-round (->?last-concluded-round wx)]
        (-> last-concluded-round
-           concluded-round->received-event)))))
-
-(defn round-received
-  "The first round in which all unique famous witnesess see it,
-   given fame of all witnesses in previous rounds been decided (round been decided)."
-  [x y]
-  )
+           :concluded-round/last-received-event)))))
 
 
 ;; --------------- Stake ----------------
@@ -812,23 +937,27 @@
 (def many-stake (-> total-stake (/ 3) (* 2)))
 (def initial-share-stake-log
   (->> hg-members/initial-member-names
-       (mapv (fn [member-name]
-               {:share-stake/to     member-name
-                :share-stake/amount (/ total-stake (count hg-members/initial-member-names))}))))
+       (map (fn [member-name]
+              {:share-stake/to     member-name
+               :share-stake/amount (/ total-stake (count hg-members/initial-member-names))}))))
 
-(def share-stake-log->stake-map
-  (memoize
-   (fn [share-stake-log]
-     (if (empty? share-stake-log)
-       {}
-       (let [[{:share-stake/keys [from to amount]} & ss-rest] share-stake-log]
-         (cond-> (-> ss-rest share-stake-log->stake-map)
-           from (update from - amount)
-           to   (update to   + amount)
-           :sanitize (->> (into {} (remove (comp zero? val))))
-           :sort (->> (sort-by first)
-                      (apply concat)
-                      (apply array-map))))))))
+(defn* ^:memoizing share-stake-log->stake-map
+  [share-stake-log]
+  (if (empty? share-stake-log)
+    (hash-map)
+    (let [[{:share-stake/keys [from to amount] :as share-stake} & ss-rest] share-stake-log
+          prev-stake-map                                                   (-> ss-rest share-stake-log->stake-map)
+          new-stake-map                                                    (cond-> prev-stake-map
+                                                                             from      (update from - amount)
+                                                                             to        (update to   + amount)
+                                                                             :sanitize (->> (into {} (remove (comp zero? val))))
+                                                                             :sort     (->> (sort-by first)
+                                                                                            (apply concat)
+                                                                                            (apply array-map)))]
+      (if (->> new-stake-map (some (fn [[_ stake]] (> stake (/ total-stake 3)))))
+        (do #_(js/console.log "share stake tx would give > 1/3 stake to a single member, skipping it" prev-stake-map share-stake new-stake-map)
+            prev-stake-map)
+        new-stake-map))))
 
 (def derived-db->stake-map
   (memoize
@@ -841,32 +970,31 @@
 (def init-db
   {:share-stake-log initial-share-stake-log})
 
-;; TODO add memoize
 (def fns
   {:share-stake
-   (memoize
-    (fn [db {:share-stake/keys [from to percent]}]
-      (update db :share-stake-log (fn [share-stake-log]
-                                    (let [stake-map (share-stake-log->stake-map share-stake-log)
-                                          amount           (-> stake-map
-                                                               (get from)
-                                                               (/ 100)
-                                                               (* percent)
-                                                               (floor))]
-                                      (conj share-stake-log
-                                            {:share-stake/from   from
-                                             :share-stake/to     to
-                                             :share-stake/amount amount}))))))})
+   (fn [db {:share-stake/keys [from to percent]}]
+     (update db :share-stake-log (fn [share-stake-log]
+                                   (let [stake-map (share-stake-log->stake-map share-stake-log)
+                                         amount    (-> stake-map
+                                                       (get from)
+                                                       (/ 100)
+                                                       (* percent)
+                                                       (floor))]
+                                     (conj share-stake-log
+                                           {:share-stake/from   from
+                                            :share-stake/to     to
+                                            :share-stake/amount amount})))))})
 
-(def ?received-event->derived-db
-  (memoize
-   (fn [?received-event]
-     (if (nil? ?received-event)
-       init-db
-       (if-let [{:tx/keys [fn-id args]} (:event/tx (:received-event/event ?received-event))]
-         (let [f (get fns fn-id)]
-           (apply f (?received-event->derived-db (:received-event/prev-received-event ?received-event)) [args]))
-         (?received-event->derived-db (:received-event/prev-received-event ?received-event)))))))
+;; when round has too many events, recursion depth of browser is not enough to calc it all
+;; TODO switch to calc for concluded round, from earliest to latest
+(defn* ^{:memoizing true #_{:only-last? true}} ?received-event->derived-db
+  [?received-event]
+  (if (nil? ?received-event)
+    init-db
+    (if-let [{:tx/keys [fn-id args]} (:event/tx (:received-event/event ?received-event))]
+      (let [f (get fns fn-id)]
+        (apply f (?received-event->derived-db (:received-event/prev-received-event ?received-event)) [args]))
+      (?received-event->derived-db (:received-event/prev-received-event ?received-event)))))
 
 #_
 (def event->derived-db
@@ -874,21 +1002,19 @@
    (fn [event]
      (?received-event->derived-db (last-received-event event)))))
 
-(def ?received-event->stake-map
-  (memoize
-   (fn [received-event]
-     (-> received-event
-         ?received-event->derived-db
-         :share-stake-log
-         share-stake-log->stake-map))))
+(defn ?received-event->stake-map
+  [received-event]
+  (-> received-event
+      ?received-event->derived-db
+      :share-stake-log
+      share-stake-log->stake-map))
 
-(def witness->stake-map
-  (memoize
-   (fn [w]
-     #_(assert (witness? w))
-     (-> w
-         ->?concluded-round
-         ?concluded-round->stake-map))))
+#_
+(defn* event->stake-map
+  [x]
+  (-> x
+      ->?concluded-round
+      ?concluded-round->stake-map))
 
 #_
 (def witness-concluded->stake-map
@@ -898,17 +1024,17 @@
          ->?last-received-event
          ?received-event->stake-map))))
 
-(def event->person
-  (memoize
-   (fn [event]
-     (let [member-name (creator event)]
-       (hg-members/member-name->person member-name)))))
+(defn event->person
+  [event]
+  (let [member-name (creator event)]
+    (hg-members/member-name->person member-name)))
 
-(def witness->stake
+#_
+(def event->stake
   (memoize
    (fn [w]
      (let [member-name (:event/creator w)
-           stake-map (-> w witness->stake-map)]
+           stake-map (-> w event->stake-map)]
        (get stake-map member-name)))))
 
 #_
@@ -921,25 +1047,23 @@
          last
          first))))
 
-
+#_
 (def event->present-members
   (memoize
    (fn [event]
      (some-> event
              witness-or-self-witness
-             witness->stake-map
+             event->stake-map
              keys
              (->> (map hg-members/member-name->person))))))
 
-(def creator-hg-map->main-top-witness
-  (memoize
-   (fn [creator-hg-map]
-     (when-let [main-hg (get creator-hg-map "Alice")]
-       (let [?cr (->?concluded-round main-hg)]
-         (witness-or-self-witness main-hg ?cr))))))
+#_
+(defn* creator-hg-map->main-top-witness
+  [creator-hg-map]
+  (when-let [main-hg (get creator-hg-map "Alice")]
+    (let [?cr (->?concluded-round main-hg)]
+      (witness-or-self-witness main-hg ?cr))))
 
-(def creator-hg-map->?alice-tip
-  (memoize
-   (fn [creator-hg-map]
-     (when-let [main-hg (get creator-hg-map "Alice")]
-       main-hg))))
+(defn creator-hg-map->?alice-tip [creator->hg]
+  (when-let [main-hg (get creator->hg "Alice")]
+    main-hg))

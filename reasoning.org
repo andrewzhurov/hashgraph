@@ -27,13 +27,58 @@
 * TODO perhaps uniform init-db creation
 
 * TODO efficient render
-** CANCELLED render view area + a bit around
+** DONE render view area + a bit around
 Turned out to be slower than allowing browser to handle it.
 Just rendering the whole SVG now.
-** TODO profile code
-** TODO issuing invites on infini-events slows down a ton
-** TODO re-rendering refs is meh
-** TODO re-rendering all other stuff is meh
+UPD: re-calculation of old events with novel cr been costly,
+implemented in-view events render.
+Perhaps old events can be simply memoized.
+But then they also add overhead of tracing whether they're inspected.
+Overall, it becomes more efficient to render only in-view ones.
+** DONE profile code
+Added application-level profiling & viz.
+** DONE issuing invites on infini-events slows down a ton
+Switched to issuing in batches, outside render fn.
+** DONE re-rendering refs is meh
+Switched to rendering in-view events and ones directly atop and below (for refs).
+** DONE re-rendering all other stuff is meh
+Switched to rendering in-view events and ones directly atop and below (for refs).
+** DONE perhaps increase efficiency of event->learned-events
+As this logic is reused for cr witnesses, voting witnesses, whether received event, middle learned events. (last two use the same mem)
+** DONE switch to transients as fn mem from atoms
+Should be faster now.
+** TODO parallelize execution
+Web Workers to the resque.
+*** TODO learn about Web Workers
+**** can use [[https://developer.mozilla.org/en-US/docs/Web/API/OffscreenCanvas][OffscreenCanvas]] to render in a Worker
+**** TODO how to pass data in/out?
+***** as [[https://developer.mozilla.org/en-US/docs/Web/API/Web_Workers_API/Transferable_objects][Transferables]], efficiently
+***** TODO can we use shared data source between Workers and main thread?
+**** TODO how to memoize from a worker?
+*** TODO see how cljs-thread can be used
+*** TODO run core logic in parallel
+*** TODO run core logic out of the main thread
+** TODO perhaps performance drops as lookups from mem get ever more costly
+These lookups are mostly within the cr context, so we can try doing lookups within cr context.
+*** solution: do hierarchical lookup, where cr is first
+**** con: will slow down overall performance due to hierarchical lookup everywhere
+**** con: will slow down as more cr come
+*** solution: bind mem for cr in code, have all fns store their mems under it.
+cr -> fn-name -> fn-args -> vals
+** TODO inspector got slow on trace display
+*** TODO perhaps do not trace from mem resolution
+*** TODO perhaps do not render inputs and args if they don't even fit
+*** TODO perhaps don't render traces that are < 1 pixel wide
+Or don't collect traces that are instanteneous.
+Although both of that hinders insight.
+Rendering them is alright, thei'r inputs and args display are costly.
+*** TODO input and result is not that valuable to display ALL THE TIME
+Make their display a result of user's intent.
+E.g., on hover.
+** TODO inspector can scale via css, avoiding costly tree recompute
+Use a class to scale, like .scale-2x on root flame trace.
+** TODO inspector to scroll viz to peeked events
+*** perhaps Browser's search can be used to go through matched results
 
 * DONE fix inspector
 * DONE pass top evt and not witness
@@ -45,6 +90,12 @@ Just rendering the whole SVG now.
 * DONE add flip as right-click option
 * TODO make it easier to uninspect
 * TODO show stake-map as of prev cr
+* TODO trace as meta on returned values
+** cons: primitive values won't be traced
+*** solution: wrap returned values in trace object
+** cons: on error won't see trace
+*** solution: errors as data
+** alternatively: store trace into inspector's log, use it as mem as well
 
 * objectives
 ** understand the algo to see how it can be applied in NG

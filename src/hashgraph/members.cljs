@@ -4,7 +4,7 @@
             [garden.color :refer [rgb rgb->hsl rotate-hue hsl->rgb]
              :as gc]))
 
-(def names ["Alice" "Bob" "Charlie" "Dean" "Elon" "Frank"
+(def names ["Alice" "Bob" "Charlie" ;; "Dean" "Elon" "Frank"
             ;; "Gregory" "Henry" "Ivan" "Jamie" "Kate" "Lesly"
             ;; "Mark" "Nora" "Omar" "Pavel" "Quinn" "Rob"
             ])
@@ -74,7 +74,7 @@
    ])
 
 ;; initial members count
-(def members-count 3)
+(def members-count (count names))
 (def people
   (->> names
        (into [] (map-indexed
@@ -106,13 +106,10 @@
                                              (- 255 255))]
                       [red green blue])})))))
 
-(def member-name->person-index
-  (clojure.set/index people [:member/name]))
-
 (def member-name->person
-  (memoize
-   (fn [member-name]
-     (first (get member-name->person-index {:member/name member-name})))))
+  (->> people
+       (mapcat (fn [person] [(:member/name person) person]))
+       (apply array-map)))
 
 ;; initial members
 (def initial-member-names
