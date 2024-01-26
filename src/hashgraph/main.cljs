@@ -760,41 +760,51 @@
 
 
 (defn* ^:memoizing ->event-to-receive->learned-event ;; will slowdown over time due to mem lookup
-  [x ->to-receive?]
-  (if (->to-receive? x)
+  [x ->to-continue? ->to-receive?]
+  (if (->to-continue? x)
     (let [etr->le* (reduce
                     (fn [sp-etr->le [op-etr _op-le]]
                       (if (get sp-etr->le op-etr)
                         sp-etr->le
                         (assoc! sp-etr->le op-etr x)))
-                    (transient (or (some-> (self-parent x) (->event-to-receive->learned-event ->to-receive?))
+                    (transient (or (some-> (self-parent x) (->event-to-receive->learned-event ->to-continue? ->to-receive?))
                                    (hash-map)))
-                    (some-> (other-parent x) (->event-to-receive->learned-event ->to-receive?)))]
-      (-> etr->le*
-          (assoc! x x)
-          persistent!))
+                    (some-> (other-parent x) (->event-to-receive->learned-event ->to-continue? ->to-receive?)))]
+      (cond-> etr->le*
+        (->to-receive? x) (assoc! x x)
+        :always persistent!))
 
     (hash-map)))
 
 (defn* concluded-round->event-to-receive->learned-events
   [cr]
-  (let [?prev-cr       (:concluded-round/prev-concluded-round cr)
+  (let [cr-r           (:concluded-round/r cr)
+        ?prev-cr       (:concluded-round/prev-concluded-round cr)
+
         ->to-receive?
         (fn [event]
-          (let [event-r (->round-number event ?prev-cr)
-                ?receiving-cr
-                (first (into []
-                             (comp (take-while some?)
-                                   (drop-while (fn [prev-cr] (>= event-r (:concluded-round/r prev-cr))))
-                                   (drop-while (fn [prev-cr] (let [prev-es-r  (:concluded-round/es-r prev-cr)
-                                                                   prev-es-nr (:concluded-round/es-nr prev-cr)]
-                                                               (and (not (contains? prev-es-r event))
-                                                                    (not (contains? prev-es-nr event)))))))
-                             (iterate :concluded-round/prev-concluded-round ?prev-cr)))
-                received? (some-> ?receiving-cr :concluded-round/es-r (contains? event))]
-            (not received?)))]
+          (let [event-r (->round-number event ?prev-cr)]
+            (when (< event-r cr-r)
+              (let [?receiving-cr
+                    (first (into []
+                                 (comp (take-while some?)
+                                       (drop-while (fn [prev-cr] (>= event-r (:concluded-round/r prev-cr))))
+                                       (drop-while (fn [prev-cr] (let [prev-es-r  (:concluded-round/es-r prev-cr)
+                                                                       prev-es-nr (:concluded-round/es-nr prev-cr)]
+                                                                   (and (not (contains? prev-es-r event))
+                                                                        (not (contains? prev-es-nr event)))))))
+                                 (iterate :concluded-round/prev-concluded-round ?prev-cr)))
+                    received? (some-> ?receiving-cr :concluded-round/es-r (contains? event))]
+                (not received?)))))
+
+        ->to-continue?
+        (fn [event]
+          (let [event-r (->round-number event ?prev-cr)]
+            (or (= event-r (:concluded-round/r cr))
+                (->to-receive? event))))]
+
     (->> (:concluded-round/ws cr)
-         (map (fn [w] (->event-to-receive->learned-event w ->to-receive?)))
+         (map (fn [w] (->event-to-receive->learned-event w ->to-continue? ->to-receive?)))
          (reduce (fn [acc etr->le]
                    (reduce (fn [acc2 [etr le]]
                              (update acc2 etr (fn [les] (conj (or les []) le))))

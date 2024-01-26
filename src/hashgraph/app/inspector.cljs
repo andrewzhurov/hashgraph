@@ -250,7 +250,7 @@
     [:.kw {:display :flex
            :white-space :nowrap}
      [:.delim {:color "black"}]
-     [:.ns {:color "darkcyan" :display :none}]
+     [:.ns {:color "darkcyan"}]
      [:.name {:color "mediumblue"}]]
 
     [:.bool
@@ -365,13 +365,22 @@
     (cond (and (map? value) (-> value keys first keyword?))
           (-> value keys first namespace keyword))))
 
+(def *a (atom {}))
+(let [m1 (range 100000)]
+  (time (= m1 (with-meta m1 {:k :y}))))
+(add-watch *a :key (fn [& args] (println args)))
+(swap! *a (fn [v] v))
+
+
 (declare inspector)
 (rum/defcs table-view < rum/static rum/reactive (rum/local nil ::*horizontal?) (rum/local nil ::*sort-by-key->sort-direction)
-  [{::keys [*horizontal? *sort-by-key->sort-direction]} ms opts]
+  [{::keys [*horizontal? *sort-by-key->sort-direction]} ms {:keys [table-view] :as opts}]
   (let [ms-keys (reduce into #{} (map keys ms))
         horizontal? (if (some? @*horizontal?)
                       @*horizontal?
-                      (ms-keys->horizontal? ms-keys))
+                      (if-let [default-mode (get table-view :default-mode)]
+                        (= :horizontal default-mode)
+                        (ms-keys->horizontal? ms-keys)))
         flip! #(when (key-mod? flip-key)
                  (.stopPropagation %)
                  (reset! *horizontal? (not horizontal?)))
@@ -794,19 +803,25 @@
 
      (inspector (rum/react *log) opts)
 
-     [:div.inspected "Inspected"]
-     [:div [:button {:on-click inspected-flush!} "flush"]]
-     (inspector (rum/react *inspected) opts)
-
      [:div.fn-profiles "Fn profiles"]
      (inspector *fn-profiles opts)
 
      [:div.max-time-trace "Max time trace"]
      (inspector *max-time-trace opts)
 
-     #_#_
-     [:div.peeked "Peeked"]
-     (inspector (rum/react *peeked) opts)]))
+     (when-let [inspected (not-empty (rum/react *inspected))]
+       [:<>
+        [:div.inspected "Inspected"]
+        [:div [:button {:on-click inspected-flush!} "flush"]]
+        (inspector inspected opts)])
+
+
+     (when-let [peeked (rum/react *peeked)]
+       [:<>
+        [:div.peeked "Peeked"]
+        (inspector peeked (assoc opts
+                                 :expanded-depth 1
+                                 :table-view {:default-mode :horizontal}))])]))
 
 
 (rum/defc view < rum/static rum/reactive

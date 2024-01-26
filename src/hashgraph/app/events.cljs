@@ -1,15 +1,17 @@
 (ns hashgraph.app.events
   (:require
    [cljs.math :refer [floor ceil]]
+   [rum.core :as rum]
    [hashgraph.main :as hg]
    [hashgraph.members :as hg-members]
+   [hashgraph.app.playback :as hga-playback]
    [hashgraph.utils :refer [update!] :refer-macros [l defn*]]
    [taoensso.timbre :refer-macros [spy]]
    [taoensso.tufte :as tufte :refer [defnp p profiled profile]]))
 
 (def evt-view-r 10)
 (def evt-view-s (* evt-view-r 2))
-(def evt-padding evt-view-s)
+(def evt-padding (* evt-view-s 2))
 
 (def wit-view-r (* 2 evt-view-r))
 
@@ -64,9 +66,7 @@
      (* 2 load-area-height)))
 
 
-(def c->hg-init (hash-map "Alice" {:event/creator      "Alice"
-                                   :event/creation-time 1}))
-(defonce *c->hg (atom c->hg-init))
+
 
 (defn pick-random-n-items [n items]
   (if (or (zero? n) (empty? items))
@@ -139,15 +139,16 @@
                                                [33 66 100]))]
                        (make-share-stake-tx from to percent)))))
 
-(defn* issue [creator->hg enough?]
-  (let [alice-tip            (hg/creator-hg-map->?alice-tip creator->hg)
+(defn* issue [events enough?]
+  (let [creator->hg          (hga-playback/events->c->hg events)
+        alice-tip            (hg/creator-hg-map->?alice-tip creator->hg)
         cr                   (-> alice-tip hg/->concluded-round)
         stake-map            (-> cr hg/concluded-round->stake-map)
         current-member-names (set (keys stake-map))
         sender               (rand-nth (vec current-member-names))
         ?sender-hg           (get creator->hg sender)
 
-        new-creator>hg
+        new-events
         (if (nil? ?sender-hg)
           (let [new-sender-hg {:event/creator sender
                                :event/creation-time
@@ -158,7 +159,7 @@
                                                                          last)]
                                  (inc highest-hg-creation-time)
                                  0)}]
-            (assoc creator->hg sender new-sender-hg))
+            (conj events new-sender-hg))
 
           (let [sender-hg                    ?sender-hg
                 receivers                    (-> current-member-names
@@ -178,21 +179,25 @@
                                                      receivers)
                 selected-reachable-receivers (pick-random-n-items (max 1 (ceil (/ (count receivers) 3))) reachable-receivers)]
             (->> selected-reachable-receivers
-                 (reduce (fn [creator->hg receiver]
-                           (update creator->hg receiver
-                                   (fn [?receiver-hg]
-                                     (let [new-receiver-hg
-                                           (cond-> {:event/creator      receiver
-                                                    :event/other-parent sender-hg
-                                                    :event/creation-time (inc (max (:event/creation-time sender-hg)
-                                                                                   (:event/creation-time ?receiver-hg)))}
-                                             ?receiver-hg (assoc :event/self-parent ?receiver-hg)
-                                             :always      with-once-per-round-random-share-stake-tx)]
-                                       new-receiver-hg))))
-                         creator->hg))))]
-    (if (enough? new-creator>hg)
-      new-creator>hg
-      (recur new-creator>hg enough?))))
+                 (reduce (fn [events-acc receiver]
+                           (conj events-acc
+                                 (let [?receiver-hg (creator->hg receiver)
+                                       new-receiver-hg
+                                       (cond-> {:event/creator      receiver
+                                                :event/other-parent sender-hg
+                                                :event/creation-time (inc (max (:event/creation-time sender-hg)
+                                                                               (:event/creation-time ?receiver-hg)))}
+                                         ?receiver-hg (assoc :event/self-parent ?receiver-hg)
+                                         :always      with-once-per-round-random-share-stake-tx)]
+                                   new-receiver-hg)))
+                         events))))
+        new-c->hg (hga-playback/events->c->hg new-events)]
+    (if (enough? new-c->hg)
+      new-events
+      (recur new-events enough?))))
 
 (defn issue! [enough?]
-  (swap! *c->hg (fn [c->hg] (issue c->hg enough?))))
+  (swap! hga-playback/*playback (fn [{:keys [events]}]
+                                  (let [new-events (issue events enough?)]
+                                    {:events   new-events
+                                     :position (count new-events)}))))

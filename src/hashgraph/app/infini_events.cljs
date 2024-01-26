@@ -1,6 +1,8 @@
 (ns hashgraph.app.infini-events
   (:require [rum.core :as rum]
+            [hashgraph.app.state :as hga-state]
             [hashgraph.app.events :as hga-events]
+            [hashgraph.app.playback :as hga-playback]
             [hashgraph.utils :refer-macros [l]]
             [taoensso.timbre :refer-macros [spy]]))
 
@@ -104,3 +106,16 @@
                   (-> viz (.setAttribute "height" (+ highest-y (* 2 load-area-height)))))
                 (issue-to-fill state)))))
         state)}))
+
+
+(def *issue-events
+  (rum/derived-atom [hga-state/*infini-events-enabled? hga-state/*viz-scroll-top hga-playback/*c->hg] ::*issue-events
+                    (fn [infini-events-enabled? viz-scroll-top c->hg]
+                      (when infini-events-enabled?
+                        (let [->enough? (fn [some-c->hg]
+                                          (let [viz-height    (->viz-height some-c->hg)
+                                                window-height js/window.innerHeight
+                                                scroll-rest   (- viz-height (+ viz-scroll-top window-height))]
+                                            (> scroll-rest load-area-height)))]
+                          (when-not (->enough? c->hg)
+                            (hga-events/issue! ->enough?)))))))

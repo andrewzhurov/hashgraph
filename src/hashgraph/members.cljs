@@ -4,10 +4,28 @@
             [garden.color :refer [rgb rgb->hsl rotate-hue hsl->rgb]
              :as gc]))
 
-(def names ["Alice" "Bob" "Charlie" ;; "Dean" "Elon" "Frank"
+(def male-names
+  ["Arnold"
+   "Bob"
+   "Charlie"
+   "Dean"
+   "Elon"])
+
+(def female-names
+  ["Alice"
+   "Britney"
+   "Carol"])
+
+;; "Dean" "Elon" "Frank"
+;; "Gregory" "Henry" "Ivan" "Jamie" "Kate" "Lesly"
+;; "Mark" "Nora" "Omar" "Pavel" "Quinn" "Rob"
+
+(def names ["Alice" "Bob" "Charlie" "Dean" "Elon" ;; "Frank"
             ;; "Gregory" "Henry" "Ivan" "Jamie" "Kate" "Lesly"
             ;; "Mark" "Nora" "Omar" "Pavel" "Quinn" "Rob"
             ])
+
+(not= -1 (-indexOf male-names "Charlie"))
 
 [1 [2 3 4 5 6 7 8 9 10] 11]
 
@@ -74,15 +92,17 @@
    ])
 
 ;; initial members count
-(def members-count (count names))
+(def members-count 3 #_(count names))
 (def people
   (->> names
        (into [] (map-indexed
                  (fn [idx n]
                    {:member/idx  idx
                     :member/name n
-                    :member/color-rgb
-                    (get palette1 idx)
+                    :member/gender (cond (not= -1 (-indexOf male-names n)) :male
+                                         (not= -1 (-indexOf female-names n)) :female
+                                         :else :unknown)
+                    :member/color-rgb (get palette1 idx)
                     #_(-> (rgb->hsl (rgb 255 0 0))
                         (rotate-hue (-> 360
                                         (/ (count names))

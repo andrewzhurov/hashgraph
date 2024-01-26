@@ -96,6 +96,8 @@ Use a class to scale, like .scale-2x on root flame trace.
 ** cons: on error won't see trace
 *** solution: errors as data
 ** alternatively: store trace into inspector's log, use it as mem as well
+* TODO inspector to show seq's lazily
+As there can be > 1k elements, showing them eagerly is not needed and damm not performant.
 
 * objectives
 ** understand the algo to see how it can be applied in NG
