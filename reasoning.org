@@ -98,6 +98,51 @@ Use a class to scale, like .scale-2x on root flame trace.
 ** alternatively: store trace into inspector's log, use it as mem as well
 * TODO inspector to show seq's lazily
 As there can be > 1k elements, showing them eagerly is not needed and damm not performant.
+** only useful for dev build with a ton of traces or memos
+*** so won't be of that much use if dev version is not deployed
+* TODO add ns as table key, add #1 #2 entities in table view
+* TODO dense table rows on multiple events inspection
+* TODO pretty table highlight on peek/inspected
+* TODO maybe show stake as member's shirt
+* TODO ready viz by 3rd February, deploy and get feedback
+* TODO perhaps layout viz horizontaly on wide displays
+* TODO animate received events
+* TODO add explanation on first appearance of novel algorithm behaviour
+* TODO playback controls
+** TODO sync with scroll
+** TODO playback one event
+** TODO rewind back on scroll up
+** TODO freeze to not rewind on scroll
+* TODO starting position to issue one event
+* TODO pretty design
+** TODO perhaps intro section
+** TODO layout
+** TODO background
+* TODO buffer more events ahead-of-time on idle, so it's snappier to viz them
+* TODO test on Firefox
+* TODO test on Safari
+* TODO test on mobile
+* TODO test on high res
+* TODO fix received events popping
+* TODO perhaps untie transitions from rendered events
+* TODO fix stuck round
+That's perhaps due to dirty mem lookup.
+* TODO better peek viz
+** TODO pretty scale
+** TODO fix dimming of votes
+* TODO instead of opacity use lightened color for stake map
+* TODO more animation
+** TODO witness
+** TODO round
+** TODO stake map
+** TODO votes
+* TODO cleanup html
+* TODO received events may have the same x y, not desired
+* TODO hardly reachable members may issue it's stale event, which will make refs look not pretty
+[[~/notes/org-roam/store/sha256/cba97c7bda1f19a7835ebf4c531f784986ce1befb32492c3d3e4638238490e89]]
+* maybe lookup from mem as goog.object will be faster than (transient (hash-map))
+It is 300-600 TIMES faster when storing args by hash in js-obj compared to transient hsah-map. WOW.
+** TODO switch mem to js-obj by args hash
 
 * objectives
 ** understand the algo to see how it can be applied in NG

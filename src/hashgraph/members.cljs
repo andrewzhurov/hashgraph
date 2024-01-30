@@ -2,7 +2,8 @@
   (:require [cljs.math :refer [floor ceil]]
             [taoensso.timbre :refer-macros [spy]]
             [garden.color :refer [rgb rgb->hsl rotate-hue hsl->rgb]
-             :as gc]))
+             :as gc]
+            [hashgraph.utils :as utils]))
 
 (def male-names
   ["Arnold"
@@ -21,7 +22,7 @@
 ;; "Mark" "Nora" "Omar" "Pavel" "Quinn" "Rob"
 
 (def names ["Alice" "Bob" "Charlie" "Dean" "Elon" ;; "Frank"
-            ;; "Gregory" "Henry" "Ivan" "Jamie" "Kate" "Lesly"
+            ;; "Gregory" "Henry" ;; "Ivan" "Jamie" "Kate" "Lesly"
             ;; "Mark" "Nora" "Omar" "Pavel" "Quinn" "Rob"
             ])
 
@@ -138,5 +139,6 @@
      (nth people 5)
      (nth people 10)])
 (def hardly-reachable-members-count (ceil (/ members-count 3)))
+(def hardly-reachable-member-names (utils/random-nths hardly-reachable-members-count names))
 (def supermajority (-> members-count (* 2) (/ 3) ceil))
 (def many supermajority)

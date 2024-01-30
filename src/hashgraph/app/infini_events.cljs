@@ -2,11 +2,14 @@
   (:require [rum.core :as rum]
             [hashgraph.app.state :as hga-state]
             [hashgraph.app.events :as hga-events]
+            [hashgraph.utils :as utils]
             [hashgraph.app.playback :as hga-playback]
             [hashgraph.utils :refer-macros [l]]
             [taoensso.timbre :refer-macros [spy]]))
 
-(def load-area-height 200)
+(def load-area-height (* (+ hga-events/hgs-padding hga-events/evt-view-s) 1.5))
+(def load-area-buffer-height (* load-area-height 5))
+
 
 #_
 (def mixin
@@ -56,14 +59,6 @@
       (js/console.log "needs more events, issuing!")
       (hga-events/issue!))))
 
-(defn ->viz-height [creator->hg]
-  (-> creator->hg
-      vals
-      (->> (map hga-events/evt-view-position-y)
-           (sort))
-      last
-      (+ (* 2 load-area-height))))
-
 #_
 (def mixin
   (merge
@@ -108,14 +103,20 @@
         state)}))
 
 
-(def *issue-events
-  (rum/derived-atom [hga-state/*infini-events-enabled? hga-state/*viz-scroll-top hga-playback/*c->hg] ::*issue-events
-                    (fn [infini-events-enabled? viz-scroll-top c->hg]
-                      (when infini-events-enabled?
-                        (let [->enough? (fn [some-c->hg]
-                                          (let [viz-height    (->viz-height some-c->hg)
-                                                window-height js/window.innerHeight
-                                                scroll-rest   (- viz-height (+ viz-scroll-top window-height))]
-                                            (> scroll-rest load-area-height)))]
-                          (when-not (->enough? c->hg)
-                            (hga-events/issue! ->enough?)))))))
+;; buffers events on scroll, so there are always some to playback
+#_
+(def infini-events
+  (add-watch hga-state/*viz-scroll-top ::infini-events
+             (utils/async-sequential
+              (fn [_ _ old-viz-scroll-top new-viz-scroll-top]
+                (when (and @hga-state/*infini-events-enabled?
+                           (> new-viz-scroll-top old-viz-scroll-top))
+                  (let [->enough?
+                        (fn [some-c->hg]
+                          ;; maybe switch to buffering N events :left to playback
+                          (let [viz-height      (->viz-height some-c->hg)
+                                window-height   js/window.innerHeight
+                                viz-height-rest (- viz-height (+ new-viz-scroll-top window-height))]
+                            (>= viz-height-rest (- load-area-buffer-height members-height load-area-height))))]
+                    (when-not (->enough? (-> @hga-events/*events hga-events/events->c->hg))
+                      (hga-events/issue! ->enough?))))))))

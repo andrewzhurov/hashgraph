@@ -877,11 +877,11 @@
                                                (reduce +))
                                           (/ (count middle-learned-events)))]
 
-                    {:received-event/learned-by            learned-by
-                     :received-event/middle-learned-events middle-learned-events
-                     :received-event/received-time         received-time
-                     :received-event/concluded-round       concluded-round
-                     :received-event/event                 e-r})))
+                    (hash-map :received-event/learned-by            learned-by
+                              :received-event/middle-learned-events middle-learned-events
+                              :received-event/received-time         received-time
+                              :received-event/concluded-round       concluded-round
+                              :received-event/event                 e-r))))
 
            (sort-by :received-event/received-time)
 
@@ -890,7 +890,7 @@
            (reduce (fn [?prev-received-event re-part]
                      (let [r-idx (if (some-> ?prev-received-event :received-event/concluded-round :concluded-round/r (= r))
                                    (-> ?prev-received-event :received-event/r-idx inc)
-                                   1)
+                                   0)
 
                            ;; TODO perhaps move color calculation into view. Also will allow to change palettes dynamically.
                            ;; TODO move static stuff outside
@@ -924,9 +924,11 @@
                                 to-rgb)
                            color (let [[red green blue] chroma]
                                    (str "rgb(" red "," green "," blue ")"))]
-                       (cond-> (merge re-part
-                                      {:received-event/r-idx r-idx
-                                       :received-event/color color})
+                       (cond-> (assoc re-part
+                                      :received-event/idx   (or (some-> ?prev-received-event :received-event/idx inc)
+                                                                0)
+                                      :received-event/r-idx r-idx
+                                      :received-event/color color)
                          ?prev-received-event (assoc :received-event/prev-received-event ?prev-received-event))))
                    ?prev-received-event)))))
 

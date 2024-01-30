@@ -6,14 +6,14 @@
 (def ^:dynamic *log-path-logging?* true)
 
 #?(:cljs (def ^:private lookup-sentinel (js-obj))
-   :clj (def ^:private lookup-sentinel nil))
+   :clj  (def ^:private lookup-sentinel nil))
 #?(:cljs (def ^:private lookup-empty-args [(js-obj)]))
 (def ^:dynamic *mem-atom* nil)
 (def ^:dynamic *mem* nil)
 (def ^:dynamic *from-mem* nil)
 
-(def ^:dynamic default-tracing-enabled? true)
-#?(:dev (set! default-tracing-enabled? true))
+(def ^:dynamic default-tracing-enabled? false)
+#?(:dev (set! default-tracing-enabled? false))
 
 ;; #?(:cljs (goog-define tracing false))
 ;; #?(:cljs (goog-define traces-store (atom (hash-map))))
@@ -25,7 +25,7 @@
 (def ^:dynamic *trace-atom* nil)
 (def ^:dynamic *parent-trace-atom* nil)
 
-#?(:clj (def log! println)
+#?(:clj  (def log! println)
    :cljs (def log! js/console.log))
 
 (defmacro l [expr]
@@ -33,16 +33,45 @@
      (log! ~(pr-str expr) res#)
      res#))
 
+;; is a letl macro and not a l-binds macro to make litner happy
+(defmacro letl
+  "Logs bindings from sym to value.
+  Can be used in 'let' as (let (l-binds [a (+ 1 1)])), would log 'a => 2'."
+  [binds & exprs]
+  `(let ~(->> binds
+              (partition 2)
+              (mapcat (fn [bind]
+                        (if (-> bind first symbol? not)
+                          bind
+                          (let [[?sym expr] bind]
+                            [?sym `(let [result# ~expr]
+                                     (log! ~(pr-str ?sym) result#)
+                                     result#)]))))
+              vec)
+     ~@exprs))
+
 
 (defmacro cl
   "Conditional log. Logs expr and result when (pred value) or pred holds true."
   [pred-or-bool expr]
   `(do
      (when (if (fn? ~pred-or-bool)
-             (~pred-or-bool value)
+             (~pred-or-bool value) ;; broken
              ~pred-or-bool)
        (l ~expr))
      ~expr))
+
+#_
+(defmacro with-c
+  "Nested log statements will log only when condition holds true.
+   Condition is either a bool value or (pred result)."
+  [pred-or-bool expr]
+  `(with-redefs [log! (if (if (fn? ~pred-or-bool)
+                            (~pred-or-bool value)
+                            ~pred-or-bool)
+                        log!
+                        identity)]
+     @~exprs))
 
 #_
 (defn from-mem [mem]
@@ -65,6 +94,15 @@
               ret))
           v)))))
 
+(defn random-nths
+  "Returns randomly picked n elements from a coll."
+  [n coll]
+  (if (or (zero? n) (empty? coll))
+    #{}
+    (let [item (rand-nth (vec coll))]
+      (conj (random-nths (dec n) (disj (set coll) item))
+            item))))
+
 (def range-map
   (memoize
    (fn
@@ -84,37 +122,84 @@
 (defn merge! [m1 m2]
   (reduce (fn [acc [k v]] (assoc! acc k v)) (transient m1) m2))
 
-(defn update!
-  "'Updates' a value in an associative transient structure, where k is a
-  key and f is a function that will take the old value
-  and any supplied args and return the new value, and returns a new
-  structure.  If the key does not exist, nil is passed as the old value."
-  ([m k f]
-   (assoc! m k (f (get m k))))
-  ([m k f x]
-   (assoc! m k (f (get m k) x)))
-  ([m k f x y]
-   (assoc! m k (f (get m k) x y)))
-  ([m k f x y z]
-   (assoc! m k (f (get m k) x y z)))
-  ([m k f x y z & more]
-   (assoc! m k (apply f (get m k) x y z more))))
+#?(:cljs
+   (defn safe-assoc!
+     "When applied to a transient map, adds mapping of key(s) to
+  val(s). When applied to a transient vector, sets the val at index.
+  When applied to a nil, returns a transient hash-map with key(s) to val(s).
+  Note - index must be <= (count vector). Returns coll."
+     ([tcoll key val]
+      (cljs.core/-assoc! (or tcoll (transient (hash-map))) key val))
+     ([tcoll key val & kvs]
+      (let [ntcoll (cljs.core/-assoc! (or tcoll (transient (hash-map))) key val)]
+        (if kvs
+          (recur ntcoll (first kvs) (second kvs) (nnext kvs))
+          ntcoll)))))
 
-(defn merge-with!
-  "Returns a map that consists of the rest of the maps conj-ed onto
+#?(:cljs
+   (do (defn safe-assoc-in!
+         [m [k & ks] v]
+         (if ks
+           (safe-assoc! m k (safe-assoc-in! (get m k) ks v))
+           (safe-assoc! m k v)))
+       (assert (-> (safe-assoc-in! nil [:key1 :key2 :key3] :val)
+                   :key1
+                   :key2
+                   :key3
+                   (= :val)))))
+
+#?(:cljs
+   (do
+     (defn safe-update!
+       ([m k f]
+        (safe-assoc! m k (f (get m k))))
+       ([m k f x]
+        (safe-assoc! m k (f (get m k) x)))
+       ([m k f x y]
+        (safe-assoc! m k (f (get m k) x y)))
+       ([m k f x y z]
+        (safe-assoc! m k (f (get m k) x y z)))
+       ([m k f x y z & more]
+        (safe-assoc! m k (apply f (get m k) x y z more))))
+
+     (assert
+      (-> (safe-update! nil :key1 safe-update! :key2 safe-assoc! :key3 :val)
+          :key1
+          :key2
+          :key3
+          (= :val)))))
+
+#?(:cljs
+   (do
+     (defn safe-update-in!
+       [m [k & ks] f & f-args]
+       (if ks
+         (safe-assoc! m k (apply safe-update-in! (get m k) ks f f-args))
+         (safe-assoc! m k (apply f (get m k) f-args))))
+
+     (assert
+      (-> (safe-update-in! nil [:key1 :key2] safe-assoc! :key3 :val)
+          :key1
+          :key2
+          :key3
+          (= :val)))))
+
+#?(:cljs
+   (defn merge-with!
+     "Returns a map that consists of the rest of the maps conj-ed onto
   the first.  If a key occurs in more than one map, the mapping(s)
   from the latter (left-to-right) will be combined with the mapping in
   the result by calling (f val-in-result val-in-latter)."
-  [f & maps]
-  (when (some identity maps)
-    (let [merge-entry (fn [m-tr e]
-                        (let [k (key e) v (val e)]
-                          (if (contains? m-tr k)
-                            (assoc! m-tr k (f (get m-tr k) v))
-                            (assoc! m-tr k v))))
-          merge2 (fn [m1-tr m2]
-                   (reduce merge-entry m1-tr (seq m2)))]
-      (reduce merge2 maps))))
+     [f & maps]
+     (when (some identity maps)
+       (let [merge-entry (fn [m-tr e]
+                           (let [k (key e) v (val e)]
+                             (if (contains? m-tr k)
+                               (safe-assoc! m-tr k (f (get m-tr k) v))
+                               (safe-assoc! m-tr k v))))
+             merge2      (fn [m1-tr m2]
+                      (reduce merge-entry m1-tr (seq m2)))]
+         (reduce merge2 maps)))))
 
 #_
 (let [n-start 0
@@ -159,6 +244,57 @@
   (if (zero? n)
     coll
     (recur (dec n) (rest coll))))
+
+(defn fn->sorted-set-safe-comparator
+  "Ensures set semantics of sorted-set are preserved."
+  [f]
+  (fn [x y]
+    (let [r (f x y)]
+      (if (number? r)
+        (if (not= 0 r) ;; 0 will lead to not conjing a unique el, fallback to poor sort
+          r
+          -1)
+        (if r
+          -1
+          (if (f y x) 1
+              -1 ;; default to a poor sort
+              ))))))
+
+#?(:cljs
+   (do
+     (defn sorted-set-by*
+       ([keyfn] (sorted-set-by* keyfn cljs.core/compare))
+       ([keyfn comp] (let [safe-comp             (fn->sorted-set-safe-comparator comp)
+                           safe-comp-after-keyfn (fn [x y] (if (= x y)
+                                                             0 ;; do not replace existing el
+                                                             (safe-comp (keyfn x) (keyfn y))))]
+                       (cljs.core/sorted-set-by safe-comp-after-keyfn))))
+     (let [ss (-> (sorted-set-by* meta)
+                  (conj (with-meta {1 1} 1))
+                  (conj (with-meta {2 2} 2)))]
+       ;; sorts by cljs.core/comparator by default
+       (assert (= ss #{{1 1} {2 2}})))
+
+     (let [ss (-> (sorted-set-by* meta)
+                  (conj (with-meta {1 1} 1))
+                  (conj (with-meta {1 1} 2)))]
+       ;; does not add duplicates
+       (assert (= ss #{{1 1}}))
+       (assert (= (-> ss first meta) 1)))
+
+     (let [ss (-> (sorted-set-by* meta)
+                  (conj (with-meta {1 1} 1))
+                  (conj (with-meta {2 2} 1)))]
+       ;; adds unique vals with the same comparation result
+       (assert (= ss #{{1 1} {2 2}}))
+       (assert (= (map meta ss) '(1 1))))
+
+     (let [ss (-> (sorted-set-by* meta >=)
+                  (conj (with-meta {2 2} 2))
+                  (conj (with-meta {1 1} 1)))]
+       ;; supports custom comparator
+       (assert (= (vec ss) [{2 2} {1 1}])))))
+
 
 #?(:cljs
    (defn debounce [ms f]
@@ -243,7 +379,6 @@
 ;; #?(:clj
 ;;    (defmacro defnm [fn-name fn-inputs fn-body]
 ;;      (list 'def fn-name (list 'cljs.core/memoize (list 'cljs.core/fn fn-inputs fn-body)))))
-
 
 
 
@@ -350,17 +485,6 @@
                  (swap! *mem# assoc args# v#)
                  v#)
                v#)))))))
-
-
-
-#_(type
- (let [tm (transient (hash-map))]
-   (loop [tm* tm
-          nth 2]
-     (if (pos? nth)
-       (let [new-tm* (assoc! tm* nth nth)]
-         (recur new-tm* (dec nth)))
-       tm*))))
 
 #_
 (defmacro memoizing
@@ -470,7 +594,8 @@
               ->in-mem?  (gensym "->in-mem")}} :bind
 
       :keys [only-last?
-             recur-by recur-stop]}
+             recur-by recur-stop] ;; be careful to not run with warmup async, will misbehave
+      }
      fn-form]
 
     (assert (or (and (nil? recur-by) (nil? recur-stop))
@@ -480,11 +605,13 @@
           v-sym             (gensym "v")
           from-mem-args-sym (gensym "from-mem-args")
           skip-warmup?-sym  (gensym "skip-warmup?")
-          mem-fn-sym        (gensym "mem-fn")]
+          mem-fn-sym        (gensym "mem-fn")
+          args-hash-sym     (gensym "args-hash")]
       `(let [~mem ~(if only-last?
                      `(volatile! nil)
                      `(transient (hash-map))) ;; in clojure it's an array may, so bashing in place no good
-             ~->from-mem (fn [~from-mem-args-sym] (get ~(if only-last? `(deref ~mem) mem) ~from-mem-args-sym lookup-sentinel))
+             ~->from-mem (fn [~from-mem-args-sym] (get ~(if only-last? `(deref ~mem) mem)
+                                                       (cljs.core/-hash ~from-mem-args-sym) lookup-sentinel))
              ~->in-mem?  (fn [in-mem-args#] (not (identical? (~->from-mem in-mem-args#) lookup-sentinel)))
              f#          ~fn-form
              ~skip-warmup?-sym (volatile! false)]
@@ -495,8 +622,10 @@
                  (if (empty? ~args-sym) ;; adds a bit of cost
                    lookup-empty-args
                    ~args-sym)
-
-                 mem-v#
+                 ~args-hash-sym (cljs.core/-hash ~args-sym)
+                 mem-v# (get ~(if only-last? `(deref ~mem) mem)
+                             ~args-hash-sym lookup-sentinel)
+                 #_
                  (~->from-mem ~args-sym)
                  #_ (get-in ~mem-sym ~args-sym lookup-sentinel)]
              #_(l [:mem ~mem])
@@ -529,7 +658,7 @@
                                  (apply ~mem-fn-sym cold-input#))
                              (vreset! ~skip-warmup?-sym false)
                              #_(l :warmed-up)))))
-                   #_(log! [:evaling (count (first ~args-sym))])
+                   #_(log! [:evaling ~args-sym (cljs.core/-hash ~args-sym) ~mem])
                    (let [~v-sym (apply f# ~args-sym)
                          #_#_
                          butlast-arg-mem#
@@ -543,8 +672,8 @@
                                  ~mem
                                  (butlast ~args-sym))]
                      ~(if only-last?
-                        `(vreset! ~mem {~args-sym ~v-sym})
-                        `(assoc! ~mem ~args-sym ~v-sym))
+                        `(vreset! ~mem {~args-hash-sym ~v-sym})
+                        `(assoc! ~mem ~args-hash-sym ~v-sym))
                      #_(assoc! butlast-arg-mem# (last ~args-sym) v#)
                      ~v-sym))))))))
 
@@ -586,9 +715,9 @@
                                                        :trace/time time#
                                                        :trace/time-end time-end#
                                                        :trace/result result#)
-                                               (update! :trace/traces persistent!)))]
+                                               (safe-update! :trace/traces persistent!)))]
                 (swap! hashgraph.app.inspector/*traces conj trace#)
-                (when *parent-trace-atom* (update! *parent-trace-atom* :trace/traces conj! trace#))
+                (when *parent-trace-atom* (safe-update! *parent-trace-atom* :trace/traces conj! trace#))
                 result#)))))
 
 (defmacro defn*

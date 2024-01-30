@@ -8,7 +8,8 @@
    [hashgraph.utils
     :refer-macros [defn* l]
     :refer [*parent-log-path* *parent-log-path-logging?* *log-path* *log-path-logging?*
-            debounce lazy-derived-atom atomic? conjs merge-attr-maps]]
+            debounce lazy-derived-atom atomic? conjs merge-attr-maps]
+    :as utils]
    [hashgraph.utils2 :refer-macros [td time3]]
 
    [rum.core :as rum]
@@ -63,17 +64,21 @@
 ;; (defn peek-set! [value] (reset! *peeked #{value}) value)
 ;; (defn peek! [value] (peek-set! value) #_(swap! *peeked conj value) value)
 ;; (defn unpeek! [value] (swap! *peeked disj value) value)
-
-
-(def inspected-init #{})
+(def inspected-init (utils/sorted-set-by* (comp :inspected/at-time meta)))
 (def *inspected (atom inspected-init))
 (defn inspected-flush! [] (reset! *inspected inspected-init))
-(defn inspect! [value] (swap! *inspected conj value) value)
-(defn uninspect! [value] (swap! *inspected disj value) value)
+
+(defn inspect   [inspected value] (conj inspected (with-meta value {:inspected/at-time (cljs.core/system-time)})))
+(defn uninspect [inspected value] (disj inspected value))
+
+(defn inspect!   [value] (swap! *inspected inspect   value) value)
+(defn uninspect! [value] (swap! *inspected uninspect value) value)
+
 (defn toggle-inspect! [value]
-  (swap! *inspected (fn [inspected] (if (contains? inspected value)
-                                                             (disj inspected value)
-                                                             (conj inspected value))))
+  (swap! *inspected (fn [inspected]
+                      (if (contains? inspected value)
+                        (uninspect inspected value)
+                        (inspect inspected value))))
   value)
 
 
@@ -117,11 +122,12 @@
 (def ->in?
   (fn [coll el]
     (->> coll (some (fn [coll-el]
-                      (or (identical? coll-el el)
-                          (and (or (vector? coll-el)
-                                   (seq? coll-el)
-                                   (set? coll-el))
-                               (->in? coll-el el))))))))
+                      (or ;; (identical? coll-el el) ;; :inspected/at-time meta messes up identical?
+                       (= (hash coll-el) (hash el))
+                       (and (or (vector? coll-el)
+                                (seq? coll-el)
+                                (set? coll-el))
+                            (->in? coll-el el))))))))
 
 (def ->inspected?
   (fn [el]
@@ -215,8 +221,18 @@
 
     [:table {:border          "1px solid gray"
              :padding "5px"
+             :position :relative ;; for sticky keys
              ;; :border-collapse :collapse
              }
+     [:.table-key {:position         :sticky
+                   :background-color "rgba(255,255,255,0.9)" ;; for table keys to show overflown vals semi-transparent, before table key inspector hides them completely
+                   }
+      [:.inspector {:background-color "white" ;; for table keys to hide overflown vals
+                    }]]
+     [:&.horizontal
+      [:.table-key {:left "0px"}]]
+     [:&.vertical
+      [:.table-key {:top "0px"}]]
 
      #_#_#_
      [:tr {:display :block
@@ -373,10 +389,10 @@
 
 
 (declare inspector)
-(rum/defcs table-view < rum/static rum/reactive (rum/local nil ::*horizontal?) (rum/local nil ::*sort-by-key->sort-direction)
+(rum/defcs table-view < rum/static rum/reactive (rum/local true ::*horizontal?) (rum/local nil ::*sort-by-key->sort-direction)
   [{::keys [*horizontal? *sort-by-key->sort-direction]} ms {:keys [table-view] :as opts}]
   (let [ms-keys (reduce into #{} (map keys ms))
-        horizontal? (if (some? @*horizontal?)
+        horizontal? @*horizontal? #_(if (some? @*horizontal?)
                       @*horizontal?
                       (if-let [default-mode (get table-view :default-mode)]
                         (= :horizontal default-mode)
@@ -414,14 +430,14 @@
              (some-> sort-direction (= :asc)) reverse)]
 
     (if horizontal?
-      [:table {:on-click flip!}
+      [:table.horizontal {:on-click flip!}
        (->> ordered-ms-keys
             (map-indexed
              (fn [idx ms-key]
                (let [new-opts (update opts :path conj idx)
                      ms-vals (map #(get % ms-key) ms)]
                  [:tr {:key idx}
-                  [:td (inspectable ms-vals new-opts)
+                  [:td.table-key (inspectable ms-vals new-opts)
                    (inspector ms-key new-opts)]
                   (->> ms
                        (map-indexed (fn [idx m]
@@ -431,7 +447,7 @@
                                           (let [ms-val (get m ms-key)]
                                             [:td {:key idx}
                                              (inspector ms-val new-opts)]))))))]))))]
-      [:table {:on-click flip!}
+      [:table.vertical {:on-click flip!}
        [:thead
         [:tr
          (->> ordered-ms-keys
@@ -440,10 +456,10 @@
                                    ms-key-vals (->> ms
                                                     (map ms-key)
                                                     (filter some?))]
-                               [:th (merge-attr-maps {:key      idx
-                                                      :on-click #(do (.stopPropagation %)
-                                                                     (sort-by! ms-key))}
-                                                     (inspectable ms-key-vals new-opts))
+                               [:th.table-key (merge-attr-maps {:key      idx
+                                                                :on-click #(do (.stopPropagation %)
+                                                                               (sort-by! ms-key))}
+                                                               (inspectable ms-key-vals new-opts))
                                 (inspector ms-key new-opts)]))))]]
 
        [:tbody
@@ -564,7 +580,8 @@
               @*table-view?
               ;; some keys intersect
               #_(->> resolved-s (map (comp set keys)) (apply set/intersection) (not-empty))
-              (table-view resolved-s opts))
+              (for [[_ks ms-group] (group-by (comp namespace first first) resolved-s)]
+                (table-view ms-group opts)))
          (->> resolved-s (map-indexed (fn [idx s-el]
                                         ;; conjing path leads to toggle between unfolded table and folded elements, if key intersection enabled ^
                                         (let [opts (update opts :path conj idx)]
@@ -813,15 +830,13 @@
        [:<>
         [:div.inspected "Inspected"]
         [:div [:button {:on-click inspected-flush!} "flush"]]
-        (inspector inspected opts)])
+        (inspector inspected (assoc opts :expanded-depth 1))])
 
 
      (when-let [peeked (rum/react *peeked)]
        [:<>
         [:div.peeked "Peeked"]
-        (inspector peeked (assoc opts
-                                 :expanded-depth 1
-                                 :table-view {:default-mode :horizontal}))])]))
+        (inspector peeked (assoc opts :expanded-depth 1))])]))
 
 
 (rum/defc view < rum/static rum/reactive
