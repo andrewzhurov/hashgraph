@@ -1,4 +1,5 @@
-(ns hashgraph.app.avatars)
+(ns hashgraph.app.avatars
+  (:require [hashgraph.utils :refer-macros [l]]))
 
 (def avatar-size 40)
 
@@ -15,8 +16,8 @@
       :data-name "Hairs",
       :id        "Hairs-3"}]]])
 
-(defn male-avatar [color]
-  (let [wallpaper-color "white"
+(defn male-avatar [color background-color]
+  (let [wallpaper-color background-color #_"white"
         sweater-color color
         hair-color
         ;;color
@@ -38,7 +39,8 @@
        {:fill wallpaper-color
         :d
         "M250.43,128a121.66,121.66,0,0,1-37.86,88.34H44.85a102.15,102.15,0,0,1-9-8.94l-.83-1C28,198.08,5.26,168.49,6.44,128,8.07,71.91,55.22,6,128.44,6A122,122,0,0,1,250.43,128Z",
-        :id    "Wallpaper"}]
+        :id    "Wallpaper"
+        :style {:transition "fill 0.4s ease-in"}}]
       [:path
        {:fill sweater-color
         :d
@@ -95,8 +97,8 @@
         :data-name "Hairs",
         :id        "Hairs-2"}]]]))
 
-(defn female-avatar [color]
-  (let [wallpaper-color "white" ;; #84d0f7
+(defn female-avatar [color background-color]
+  (let [wallpaper-color background-color #_"white" ;; #84d0f7
         sweater-color color]
     [:svg
      {:width     avatar-size,
@@ -113,7 +115,8 @@
       [:path
        {:id   "Wallpaper"
         :fill wallpaper-color
-        :d    "M249.16,127.72a120.25,120.25,0,0,1-28.27,77.63,123.4,123.4,0,0,1-9.2,9.79h-166a101.12,101.12,0,0,1-8.95-8.86c-.24-.27-.51-.59-.81-.95C29,197.07,6.56,167.78,7.72,127.72,9.33,72.21,56,7,128.44,7A120.72,120.72,0,0,1,249.16,127.72Z"}]
+        :d    "M249.16,127.72a120.25,120.25,0,0,1-28.27,77.63,123.4,123.4,0,0,1-9.2,9.79h-166a101.12,101.12,0,0,1-8.95-8.86c-.24-.27-.51-.59-.81-.95C29,197.07,6.56,167.78,7.72,127.72,9.33,72.21,56,7,128.44,7A120.72,120.72,0,0,1,249.16,127.72Z"
+        :style {:transition "fill 0.4s ease-in"}}]
       [:circle
        {:class "female-cls-2",
         :cx    "128.23",
