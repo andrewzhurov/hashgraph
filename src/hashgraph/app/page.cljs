@@ -549,7 +549,7 @@
                :display        :flex
                :flex-direction :column
                :align-items    :center
-               :transition     "0.4s"
+               :transition     "opacity 0.4s"
                :opacity        0}
      [:&.active {:opacity 1}]]]])
 
@@ -563,12 +563,13 @@
      [:div.members
       (for [member-name hg-members/names]
         (let [member  (hg-members/member-name->person member-name)
-              active? (contains? stake-map member-name)]
+              active? (contains? stake-map member-name)
+              stake-pos (/ (get stake-map member-name) hg/total-stake)]
           [:div.member {:class (when active? "active")
                         :style {:left  (idx-view-position-x (:member/idx member))}}
            (case (:member/gender member)
-             :male   (hga-avatars/male-avatar   (color-rgba-str (:member/color-rgb member) 1))
-             :female (hga-avatars/female-avatar (color-rgba-str (:member/color-rgb member) 1))
+             :male   (hga-avatars/male-avatar   (color-rgba-str (:member/color-rgb member) 1) (color-rgba-str (:member/color-rgb member) stake-pos))
+             :female (hga-avatars/female-avatar (color-rgba-str (:member/color-rgb member) 1) (color-rgba-str (:member/color-rgb member) stake-pos))
              [:div "unknown gender"])
            [:div.member-name {:style {:color (if (hg-members/hardly-reachable-member-names member-name)
                                                "lightgray" "black")}}
@@ -583,9 +584,10 @@
      (let [dom-node (rum/dom-node state)]
        (reset! hga-state/*scroll-by! (fn [px] (.scrollBy dom-node 0 px)))
        (.addEventListener dom-node "scroll"
-                          #(do #_(reset! hga-playback/*playing? false)
-                               (reset! hga-state/*viz-scroll-top (.-scrollTop (.-target %)))
-                               )))
+                          ;; V may cause stale viz-scroll-top
+                          (once-per-render #(do #_(reset! hga-playback/*playing? false)
+                                                (reset! hga-state/*viz-scroll-top (.-scrollTop (.-target %)))
+                                                ))))
      state)}
   []
   [:div#viz-wrapper
@@ -602,6 +604,7 @@
 (rum/defc viz-section-view
   []
   [:div {:style {:position :relative}}
+   #_
    (viz-section-controls-view)
 
    (viz-wrapper)
