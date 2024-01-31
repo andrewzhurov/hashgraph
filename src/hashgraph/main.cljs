@@ -984,13 +984,13 @@
 
 (def fns
   {:share-stake
-   (fn [db {:share-stake/keys [from to percent]}]
+   (fn [db {:share-stake/keys [from to ratio]}]
      (update db :share-stake-log (fn [share-stake-log]
                                    (let [stake-map (share-stake-log->stake-map share-stake-log)
                                          amount    (-> stake-map
                                                        (get from)
-                                                       (/ 100)
-                                                       (* percent)
+                                                       (* (first ratio))
+                                                       (/ (second ratio))
                                                        (floor))]
                                      (conj share-stake-log
                                            {:share-stake/from   from

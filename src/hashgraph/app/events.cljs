@@ -114,11 +114,11 @@
        (and (= invitor-event event)
             (invitor-event->invitee invitor-event))))))
 
-(defn make-share-stake-tx [from to percent]
+(defn make-share-stake-tx [from to ratio]
   (hash-map :tx/fn-id :share-stake
-            :tx/args  {:share-stake/from    from
-                       :share-stake/to      to
-                       :share-stake/percent percent}))
+            :tx/args  [{:share-stake/from  from
+                        :share-stake/to    to
+                        :share-stake/ratio ratio}]))
 
 #_
 (defn maybe-assoc-invitee [evt]
@@ -135,9 +135,9 @@
     (zero? (rand-int 4)) #_(some-> evt hg/self-parent (->> hg/witness? evt))
     (assoc :event/tx (let [from    (:event/creator evt)
                            to      (rand-nth (names-without-name hg-members/names from))
-                           percent (rand-nth (if (= (:event/creator evt) "Alice")
-                                               [33 66] ;; Alice's used as main concluding member, so let's not drop her from the system by sharing all her stake out
-                                               [33 66 100]))]
+                           percent (rand-nth (if (= (:event/creator evt) hg/main-creator)
+                                               [[1 3] [2 3]] ;; initiator's used as main concluding member, so let's not drop her from the system by sharing all her stake out
+                                               [[1 3] [2 3] [3 3]]))]
                        (make-share-stake-tx from to percent)))))
 
 (defn* ^:memoizing events->c->hg [events]
