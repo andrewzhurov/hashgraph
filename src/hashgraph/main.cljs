@@ -312,14 +312,22 @@
   ;; 1. new cr - lookup whether final
   ;; TODO lookup if no mem exist first
   (let [[prev-round-mem prev-cr]
-        (some (fn [cr]
-                (when (->in-mem? [x cr])
-                  [(->from-mem [x cr]) cr]))
-              (sequence (comp (take-while some?)
-                              (drop 1) ;; check except for the cr itself, as it will not be in mem, otherwise we wouldn't make it here, but got looked up from mem
-                              (take 5)) ;; taking just some crs to check, to escape the cost for when there is a ton of crs none of which are in mem
-                        (iterate :concluded-round/prev-concluded-round cr)))]
-
+        #_(when-let [x-mem (get mem x)]
+          (->> ?cr
+               :concluded-round/prev-concluded-round ;; this fn would not be executed on a memoized ?cr
+               (iterate :concluded-round/prev-concluded-round)
+               (take-while some?)
+               (some (fn [cr]
+                       (when-let [round-mem (get x-mem cr)] ;; doesn't lookup nil cr
+                         [round-mem cr])))))
+        (->> cr
+             :concluded-round/prev-concluded-round ;; this fn would not be executed on a memoized cr
+             (iterate :concluded-round/prev-concluded-round)
+             (take-while some?)
+             ;; perhaps take n crs to check, e.g., 5, not all, to limit otheriwse increasing cost as crs become many
+             (some (fn [cr]
+                     (when (->in-mem? [x cr])
+                       [(->from-mem [x cr]) cr]))))]
     ;; Once round r is settled, the _future_ rounds will reshuffle,
     ;; and the calculations for round r + 1 famous witnesses will be done using the new stake record.
     ;; source: https://hyp.is/QxYPUqyAEe6hUtsMYuakKQ/www.swirlds.com/downloads/SWIRLDS-TR-2016-01.pdf
@@ -1069,6 +1077,7 @@
     (let [?cr (->?concluded-round main-hg)]
       (witness-or-self-witness main-hg ?cr))))
 
+(def main-creator "Charlie")
 (defn creator-hg-map->?alice-tip [creator->hg]
-  (when-let [main-hg (get creator->hg "Alice")]
+  (when-let [main-hg (get creator->hg main-creator)]
     main-hg))
