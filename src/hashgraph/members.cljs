@@ -1,5 +1,6 @@
 (ns hashgraph.members
   (:require [cljs.math :refer [floor ceil]]
+            [clojure.set :as set]
             [taoensso.timbre :refer-macros [spy]]
             [garden.color :refer [rgb rgb->hsl rotate-hue hsl->rgb]
              :as gc]
@@ -25,6 +26,7 @@
             ;; "Gregory" "Henry" ;; "Ivan" "Jamie" "Kate" "Lesly"
             ;; "Mark" "Nora" "Omar" "Pavel" "Quinn" "Rob"
             ])
+(def names-count (count names))
 
 (not= -1 (-indexOf male-names "Charlie"))
 
@@ -93,7 +95,7 @@
    ])
 
 ;; initial members count
-(def members-count 3 #_(count names))
+(def initial-members-count 3 #_(count names))
 (def people
   (->> names
        (into [] (map-indexed
@@ -134,11 +136,12 @@
 
 ;; initial members
 (def initial-member-names
-  (take members-count names)
+  [(first names) (nth names 2) (last names)]
   #_[(nth people 0)
      (nth people 5)
      (nth people 10)])
-(def hardly-reachable-members-count (ceil (/ members-count 3)))
-(def hardly-reachable-member-names (utils/random-nths hardly-reachable-members-count names))
-(def supermajority (-> members-count (* 2) (/ 3) ceil))
+(def hardly-reachable-members-count 1 #_(floor (/ (count names) 3)))
+(def hardly-reachable-member-names (utils/random-nths hardly-reachable-members-count (set/difference (set names)
+                                                                                                     (set initial-member-names))))
+(def supermajority (-> initial-member-names (* 2) (/ 3) ceil)) ;; been used for main algorithm when there was no dynamic stake
 (def many supermajority)

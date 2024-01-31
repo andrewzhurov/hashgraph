@@ -312,7 +312,6 @@
                  :height (* wit-view-r 2)}
                 (inspectable event))
 
-      #_
       (when witness?
         [:circle.witness
          {:r            wit-view-r
@@ -322,7 +321,6 @@
           :stroke-width 1
           :fill         :transparent}])
 
-      #_
       (when stake-map
         [:g.stake-map (inspectable stake-map)
          (for [[stake-holder _stake-holded] stake-map]
@@ -337,7 +335,6 @@
                         :stroke-width     vote-view-stroke-width
                         :stroke-dasharray (str "0 " start-vote-circumferance " " vote-circumferance " " vote-view-circumferance)}])])])
 
-      #_
       (when votes
         [:g.votes
          (for [{:vote/keys [from-event value] :as vote} votes]
@@ -364,7 +361,6 @@
         :stroke-width 1
         :fill         fill}]
 
-      #_
       (when share-stake?
         (hga-icons/transfer {:width  evt-view-s
                              :height evt-view-s
@@ -372,7 +368,6 @@
                              :y      (- y evt-view-r)
                              :fill   (if received-event "white" "black")}))
 
-      #_
       [:text.round
        {:x (+ x (/ wit-view-r 2))
         :y (+ y (/ (- wit-view-r) 2))}

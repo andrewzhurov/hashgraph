@@ -104,7 +104,7 @@
 (defn log!
   ([value] (log! [] value))
   ([path value]
-   (log!-with conjs path value)
+   (log!-with conj path value)
    value))
 
 (defn unlog!

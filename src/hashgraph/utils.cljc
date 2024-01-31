@@ -575,16 +575,11 @@
                    #_(assoc! butlast-arg-mem# (last ~args-sym) v#)
                    ~v-sym))))))))
 
-(defn warmup-cold-inputs-batch [f cold-inputs-batch]
-  (doseq [cold-input cold-inputs-batch]
-    #_(log! [:warming-up (count (first cold-input))])
-    (apply f cold-input)))
-
 (defn warmup-cold-inputs [f cold-inputs]
-  (let [cold-inputs-batches (partition 10 10 [] cold-inputs)]
-    (doseq [cold-inputs-batch cold-inputs-batches]
-      #_(log! :warming-up-batch)
-      (warmup-cold-inputs-batch f cold-inputs-batch))))
+  (loop [[cold-input & rest-cold-inputs] cold-inputs]
+    (when cold-input
+      (apply f cold-input)
+      (recur rest-cold-inputs))))
 
 (defmacro memoizing
     "Returns memoized function over the supplied function, optionally binding mem state to mem symbol from opts."
@@ -696,7 +691,7 @@
 (time (test-fn 5000))
 
 (defmacro tracing-fn-form
-  [f-sym f-name]
+  [fn-form f-name]
   `(fn [& args#]
     (binding [*parent-log-path*   (if (some? *log-path*)
                                     (conj *parent-log-path* *log-path*)
@@ -707,7 +702,7 @@
                                               :trace/fn-name (quote ~f-name)
                                               :trace/fn-args args#
                                               :trace/traces  (transient [])))]
-      (timing (let [result#   (apply ~f-sym args#)
+      (timing (let [result#   (apply ~fn-form args#)
                     time#     (*->time*)
                     time-end# (+ *time-start* time#)
                     trace#    (persistent! (-> *trace-atom*
@@ -744,20 +739,21 @@
                          (-> f-name meta :tracing :enabled? false? not)
                          default-tracing-enabled?)
 
-        f-sym (gensym "f")
         fn-form `(fn ~fn-inputs ~@(if timing?
                                     `((timing ~@fn-bodies))
                                     fn-bodies))
+
+        fn-form (if tracing?
+                  (macroexpand `(tracing-fn-form ~fn-form ~f-name))
+                  fn-form)
+
+        fn-form (if memoizing?
+                  (macroexpand `(memoizing ~memoizing-opts ~fn-form))
+                  fn-form)
         ]
 
     `(def ~(with-meta f-name m)
-       (let [~f-sym ~(if memoizing?
-                       `(memoizing ~memoizing-opts ~fn-form)
-                       fn-form)
-             ~f-sym ~(if tracing?
-                       `(tracing-fn-form ~f-sym ~f-name)
-                       f-sym)]
-         ~f-sym))))
+       ~fn-form)))
 
 #_
 (clojure.pprint/pprint

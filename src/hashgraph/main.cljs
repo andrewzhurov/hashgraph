@@ -312,22 +312,14 @@
   ;; 1. new cr - lookup whether final
   ;; TODO lookup if no mem exist first
   (let [[prev-round-mem prev-cr]
-        #_(when-let [x-mem (get mem x)]
-          (->> ?cr
-               :concluded-round/prev-concluded-round ;; this fn would not be executed on a memoized ?cr
-               (iterate :concluded-round/prev-concluded-round)
-               (take-while some?)
-               (some (fn [cr]
-                       (when-let [round-mem (get x-mem cr)] ;; doesn't lookup nil cr
-                         [round-mem cr])))))
-        (->> cr
-             :concluded-round/prev-concluded-round ;; this fn would not be executed on a memoized cr
-             (iterate :concluded-round/prev-concluded-round)
-             (take-while some?)
-             ;; perhaps take n crs to check, e.g., 5, not all, to limit otheriwse increasing cost as crs become many
-             (some (fn [cr]
-                     (when (->in-mem? [x cr])
-                       [(->from-mem [x cr]) cr]))))]
+        (some (fn [cr]
+                (when (->in-mem? [x cr])
+                  [(->from-mem [x cr]) cr]))
+              (sequence (comp (take-while some?)
+                              (drop 1) ;; check except for the cr itself, as it will not be in mem, otherwise we wouldn't make it here, but got looked up from mem
+                              (take 5)) ;; taking just some crs to check, to escape the cost for when there is a ton of crs none of which are in mem
+                        (iterate :concluded-round/prev-concluded-round cr)))]
+
     ;; Once round r is settled, the _future_ rounds will reshuffle,
     ;; and the calculations for round r + 1 famous witnesses will be done using the new stake record.
     ;; source: https://hyp.is/QxYPUqyAEe6hUtsMYuakKQ/www.swirlds.com/downloads/SWIRLDS-TR-2016-01.pdf
@@ -946,7 +938,7 @@
 
 ;; --------------- Stake ----------------
 (def total-stake 99)
-(def many-stake (-> total-stake (/ 3) (* 2)))
+(def many-stake (-> total-stake (* 2) (/ 3)))
 (def initial-share-stake-log
   (->> hg-members/initial-member-names
        (map (fn [member-name]
@@ -1003,10 +995,11 @@
   [?received-event]
   (if (nil? ?received-event)
     init-db
-    (if-let [{:tx/keys [fn-id args]} (:event/tx (:received-event/event ?received-event))]
-      (let [f (get fns fn-id)]
-        (apply f (?received-event->derived-db (:received-event/prev-received-event ?received-event)) [args]))
-      (?received-event->derived-db (:received-event/prev-received-event ?received-event)))))
+    (let [prev-derived-db (?received-event->derived-db (:received-event/prev-received-event ?received-event))]
+      (if-let [{:tx/keys [fn-id args]} (:event/tx (:received-event/event ?received-event))]
+        (let [f (get fns fn-id)]
+          (apply f  prev-derived-db args))
+        prev-derived-db))))
 
 #_
 (def event->derived-db
