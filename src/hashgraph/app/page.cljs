@@ -69,7 +69,8 @@
    [:#root {:height "100%" :overflow-y :hidden}]
    [:#view {:display :flex}]
    [:#viz-wrapper {:height "100vh" :width "50vw" :overflow-y :scroll}]
-   [:#viz {:width "100%"}
+   [:#viz {:width "100%"
+           :transition "height 0.5s"}
     [:.inspectable {:transform-box :fill-box
                     :transform-origin :center}
      [:&.peeked {:scale 1.3}]
@@ -527,7 +528,7 @@
 (rum/defc viz < rum/reactive
   []
   (let [[played-evt-infos> rewinded-evt-infos>] (rum/react *rendered-evt-infos)]
-    [:svg#viz {:height (hga-events/->viz-height (-> played-evt-infos> first :event-info/event))} ;; TODO change smoothly
+    [:svg#viz {:height (hga-events/->viz-height (-> played-evt-infos> first :event-info/event))}
      [:g.events-view
       (for [evt-info played-evt-infos>]
         (event-view evt-info))
