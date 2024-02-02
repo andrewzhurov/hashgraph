@@ -49,6 +49,9 @@
   (memoize
    (fn [t]
      (-> t
+         (+ viz-offset))
+     #_
+     (-> t
          (* (+ evt-view-s sp-padding))
          (+ evt-view-r sp-padding)
          (+ viz-offset)))))
@@ -152,6 +155,30 @@
         creator->hg          (-> events events->c->hg)
         alice-tip            (-> creator->hg hg/creator-hg-map->?alice-tip)
         cr                   (-> alice-tip hg/->concluded-round)
+(defn ->last-creation-time [events]
+  (:event/creation-time (last events)))
+(defn ->new-creation-time [events]
+  (+ (->last-creation-time events) (rand-nth [20 30 40])))
+
+;; Due to scroll being the playback position,
+;; in order to be able to play to a particular event,
+;; we need to make sure that events have distinct creation times (as int, because scroll position is an int).
+;; To achieve that we can track taken creation times, and ensure that newly issued creation time is distinct.
+(defonce *taken-creation-times (atom #{}))
+(defn ->next-creation-time [prev-creation-time]
+  (let [next-creation-time-candidate
+        (-> prev-creation-time
+            (+ evt-view-offset)
+            ;; add small random offset, to ensure creation-time is distinct
+            ;; would be enough to give [0; members-count]
+            (+ (rand-int (* (count hg-members/names) 2))) ;; * 2 to give more leeway
+            )]
+    (if (not (contains? @*taken-creation-times next-creation-time-candidate))
+      (do (swap! *taken-creation-times conj next-creation-time-candidate)
+          next-creation-time-candidate)
+      ;; try again, with a different random offset
+      (->next-creation-time prev-creation-time))))
+
         stake-map            (-> cr hg/concluded-round->stake-map)
         current-member-names (set (keys stake-map))
         sender               (rand-nth (vec current-member-names))
@@ -161,12 +188,13 @@
         (if (nil? ?sender-hg)
           (let [new-sender-hg (hash-map :event/creator sender
                                         :event/creation-time
-                                        (if-let [highest-hg-creation-time (some-> creator->hg
-                                                                                  vals
-                                                                                  (->> (map :event/creation-time)
-                                                                                       (sort))
-                                                                                  last)]
-                                          (inc highest-hg-creation-time)
+                                        (if-let [highest-hg-creation-time
+                                                 (some-> creator->hg
+                                                         vals
+                                                         (->> (map :event/creation-time)
+                                                              (sort))
+                                                         last)]
+                                          (->next-creation-time highest-hg-creation-time)
                                           0))]
             (conj new-events new-sender-hg))
 
@@ -192,8 +220,10 @@
                                        new-receiver-hg
                                        (cond-> (hash-map :event/creator      receiver
                                                          :event/other-parent sender-hg
-                                                         :event/creation-time (inc (max (:event/creation-time sender-hg)
-                                                                                        (:event/creation-time ?receiver-hg))))
+                                                         :event/creation-time
+                                                         (-> (max (:event/creation-time sender-hg)
+                                                                  (:event/creation-time ?receiver-hg))
+                                                             (->next-creation-time)))
                                          ?receiver-hg (assoc :event/self-parent ?receiver-hg)
                                          :always      with-once-per-round-random-share-stake-tx)]
                                    new-receiver-hg)))
