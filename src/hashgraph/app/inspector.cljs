@@ -2,6 +2,7 @@
   (:require
    [cljs.reader]
    [garden.core :refer [css]]
+   [goog.object]
    #_[garden.def :refer-macros [defkeyframes]]
    [garden.color :as gc]
    [garden.stylesheet :refer [at-keyframes]]
@@ -258,6 +259,9 @@
             :align-items :top}
       [:.k {:margin-right "10px"}]
       [:.v {}]]]
+    [:.object {:display :flex
+               :white-space :nowrap
+               :align-items :top}]
 
     [:.seqable {:display :flex
                 :white-space :nowrap
@@ -548,6 +552,12 @@
        (table-view [m] opts))
    [:div.dt-sym "}"]])
 
+(rum/defc inspector-view-object < rum/static rum/reactive
+  [obj opts]
+  [:div.object
+   [:div.dt-sym "js"]
+   (inspector (js->clj obj :keywordize-keys true) opts)])
+
 #_
 (rum/defc inspector-view-cr
   < rum/static
@@ -697,6 +707,13 @@
         ;;         [ el ]
         (> rel-y view-height))))))
 
+(extend-type js/Event
+  IEncodeClojure
+  (-js->clj [x options]
+    (persistent!
+     (reduce (fn [r k] (assoc! r (keyword k) (js->clj (goog.object/get x k) options)))
+             (transient {}) (js-keys x)))))
+
 (rum/defcs inspector < rum/static rum/reactive (rum/local nil ::*local-expanded-depth) (rum/local nil ::*dom-node)
   {:did-mount (fn [state] (reset! (::*dom-node state) (rum/dom-node state)) state)}
   [{::keys [*local-expanded-depth *dom-node] :as state} value {:keys [expanded-depth path in-view?] :as opts}]
@@ -745,6 +762,9 @@
 
            (or (vector? value) (seq? value) (set? value))
            (inspector-view-seqable value new-opts)
+
+           (not= value (js->clj value))
+           (inspector-view-object value new-opts)
 
            :else (inspector-view-default value new-opts))]))
 
