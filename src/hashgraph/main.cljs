@@ -37,9 +37,9 @@
   [x]
   (cond-> #{}
     (self-parent x) (-> (conj (self-parent x))
-                        (into (ancestors (self-parent x))))
+                        (set/union (ancestors (self-parent x))))
     (other-parent x) (-> (conj (other-parent x))
-                         (into (ancestors (other-parent x))))))
+                         (set/union (ancestors (other-parent x))))))
 
 (defn* ancestor? ;; damm costly, don't use
   [x y]
@@ -1077,7 +1077,6 @@
     (let [?cr (->?concluded-round main-hg)]
       (witness-or-self-witness main-hg ?cr))))
 
-(def main-creator "Charlie")
-(defn creator-hg-map->?alice-tip [creator->hg]
-  (when-let [main-hg (get creator->hg main-creator)]
-    main-hg))
+(def main-creator "Charlie") ;; creator whose tip used to conclude in viz (he's not special for the main algorithm ^)
+(defn* events>->main-tip [events>] ;; desc
+  (->> events> (some (fn [evt] (when (= (:event/creator evt) main-creator) evt)))))

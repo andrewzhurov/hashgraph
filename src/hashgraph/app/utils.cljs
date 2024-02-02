@@ -1,7 +1,7 @@
 (ns hashgraph.app.utils
   (:require
    [hashgraph.app.events :as hga-events]
-   [hashgraph.utils :refer-macros [l] :as utils]))
+   [hashgraph.utils :refer [log!] :refer-macros [l letl] :as utils]))
 
 (defn ->view-bound-min [scroll-top]
   scroll-top)

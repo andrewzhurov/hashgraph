@@ -38,6 +38,7 @@
 (defn start []
   ;; start is called after code's been reloaded
   ;; this is configured in :after-load in the shadow-cljs.edn
+  (set! hashgraph.utils/log! hashgraph.app.inspector/log!)
   (hashgraph.utils-test/test)
   (when-let [node (.getElementById js/document "root")]
     (rum/mount (page/view) node))
@@ -59,7 +60,7 @@
       ;; :repl-connect-string "/js/repl.js"
       :core-connect-string "/js/core.js"
       }))
-
+  (set! hashgraph.utils/log! hashgraph.app.inspector/log!)
   (hga-log/init)
   (tufte/add-basic-println-handler!
    {}

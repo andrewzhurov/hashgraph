@@ -1,70 +1,151 @@
 (ns hashgraph.app.playback
-  (:require [rum.core :as rum]
+  (:require [clojure.set :as set]
+            [cognitect.transit :as transit]
+            [rum.core :as rum]
+            [hashgraph.main :as hg]
+            [hashgraph.members :as hg-members]
             [hashgraph.app.state :as hga-state]
             [hashgraph.app.events :as hga-events]
             [hashgraph.app.utils :refer [->below-view? ->above-view?] :as hga-utils]
-            [hashgraph.utils :refer-macros [defn* l] :as utils]))
+            [hashgraph.app.inspector :refer [log!]]
+            [hashgraph.utils :refer-macros [defn* log-relative l letl letp] :as utils]
+            [taoensso.tufte :refer [profile p]]))
 
 (def tt 500) ;; transition time ms
 ;; Playback state is kept explicitly rather than being a derived view,
 ;; this is to get a performance gain, sacrificing simplicity.
-(defonce *playback (atom {:played '() ;; note, first element is the last played event
-                          :left   '({:event/creator       "Alice"
-                                     :event/creation-time 0})}))
-(-> @*playback :played count)
-(-> @*playback :left count)
+(defonce *left< (atom (list {:event/creator       hg/main-creator
+                             :event/creation-time 1})))
 
+;; Playback is split to four states.
+;;
+;; *left< is used to buffer more events ahead-of-time.
+;; They are issued and memoized on idle and on exhaus.
+;; On idle issuing allows to buffer events and memoize main algorithm for them for faster playback.
+;;
+;; :behind> is used to store events that are behind the view, as there's no point in rendering them.
+;; They are kept in descending (>) order, so pulling from them to :played< on rewind is fast.
+;;
+;; :played< stores events that are in-view (rendered), in ascending order.
+;;
+;; :rewinded< stores events that been rewinded. They are capped to just few events.
+;; These events are also rendered, in order to display rewinding transition.
+;; Even though rewinded events are rendered, they do not contribute to main algorithm / they are no more present.
+(defonce *playback (atom {:behind>   '()   ;; on play we'll read from the first when putting to played V
+                          :played<   '()   ;; on play we'll read from the first when putting to behind ^
+                          :rewinded< '() ;; on play we'll read from the first when putting to played ^
+                          }))
+#_(log! :playback @*playback)
+;; These states are used to trigger view transitions.
+;; *just-played< events transition from other-parent (as though they are being sent over the wire).
+;; *just-rewinded> events transition from their current position back to other-parent (as though time's rewinded)
+(defonce *just-played<   (atom '()))
+(defonce *just-rewinded> (atom '()))
+
+(defonce *played<   (rum/cursor *playback :played<))
+(defonce *rewinded> (rum/cursor *playback :rewinded>))
+
+
+(def *frame (atom 0))
+(def *tracking? (atom false))
+(defn track-frame! []
+  (swap! *frame inc)
+  (js/requestAnimationFrame track-frame!))
+(when-not @*tracking?
+  (reset! *tracking? true)
+  (track-frame!))
+
+;; As events viz is scrolled forward, more events get "created".
+;; As events viz is scrolled backwards, time's rewinded.
 (def sync-playback-with-scroll
   (add-watch hga-state/*viz-scroll-top ::sync-playback-with-scroll
-             (utils/async-sequential
-              (fn [_ _ old-scroll-top new-scroll-top]
-                (let [delta (- new-scroll-top old-scroll-top)
-                      play-forward? (pos? delta)]
-                  (swap! *playback (fn [{:keys [played left] :as playback}]
-                                     #_(js/console.log "played")
-                                     (if play-forward?
-                                       (let [to-play (take-while #(not (hga-utils/->above-playback-view?
-                                                                        (hga-events/evt-view-position-y %)
-                                                                        new-scroll-top))
-                                                                 left)]
-                                         {:played      (into played to-play)
-                                          :left        (drop (count to-play) left)
-                                          :just-played to-play})
-                                       (let [to-rewind (take-while #(hga-utils/->above-playback-view?
-                                                                     (hga-events/evt-view-position-y %)
-                                                                     new-scroll-top)
-                                                                   played)]
-                                         {:played        (drop (count to-rewind) played)
-                                          :left          (into left to-rewind)
-                                          :just-rewinded to-rewind})))))))))
+             (fn [_ _ old-scroll-top new-scroll-top]
+               (let [delta                               (- new-scroll-top old-scroll-top)
+                     play-forward?                       (pos? delta)
+                     {:keys [behind> played< rewinded<]} @*playback]
+                 (if play-forward?
+                   (do
+                     #_(js/console.log "play")
+                     ;; TODO switch to split-with*
+                     (let [[to-behind< new-played<]          (->> played< (split-with #(hga-utils/->below-view? (hga-events/evt-view-position-y %) new-scroll-top)))
+                           new-behind>                       (into behind> to-behind<) ;; TODO perhaps try storing in separate atom
+                           [to-play-rewinded< new-rewinded<] (->> rewinded< (split-with #(not (hga-utils/->above-playback-view? (hga-events/evt-view-position-y %) new-scroll-top))))
+                           new-just-played<                  to-play-rewinded<
+                           new-played<                       (concat new-played< to-play-rewinded<)]
+                       (if (not (empty? new-rewinded<))
+                         (do (reset! *just-played< new-just-played<)
+                             (reset! *playback
+                                     {:behind>   new-behind>
+                                      :played<   new-played<
+                                      :rewinded< new-rewinded<}))
+                         (let [left<                     @*left<
+                               [to-play-left< new-left<] (->> left< (split-with #(not (hga-utils/->above-playback-view? (hga-events/evt-view-position-y %) new-scroll-top))))
+                               new-played<               (concat new-played< to-play-left<)
+                               new-just-played<          (concat new-just-played< to-play-left<)]
+                           (reset! *just-played< new-just-played<) ;; fire first, so transitions are ready, brittle :/
+                           (reset! *playback
+                                   {:behind>   new-behind>
+                                    :played<   new-played<
+                                    :rewinded< '()})
+                           (reset! *left< new-left<)))))
+
+                   (do #_(js/console.log "rewind")
+                       (let [played>                  (reverse played<)
+                             [to-play> new-behind>]   (->> behind>     (split-with #(not (hga-utils/->below-view? (hga-events/evt-view-position-y %) new-scroll-top))))
+                             new-played>              (concat played> to-play>)
+                             [to-rewind> new-played>] (->> new-played> (split-with #(hga-utils/->above-playback-view? (hga-events/evt-view-position-y %) new-scroll-top)))
+                             new-just-rewinded>       to-rewind>
+                             new-rewinded<            (into rewinded< to-rewind>)
+                             [new-rewinded< to-left<] (split-at 5 new-rewinded<) ;; cap rewinded, no point in rendering a ton of them, just the latest few
+                             new-played<              (reverse new-played>)
+                             ]
+                         (reset! *just-rewinded> new-just-rewinded>)
+                         (reset! *playback
+                                 {:behind>   new-behind>
+                                  :played<   new-played<
+                                  :rewinded< new-rewinded<})
+                         (when (not-empty to-left<)
+                           (let [new-left< (concat to-left< @*left<)]
+                             (reset! *left< new-left<))))))))))
 
 ;; Ensures there are always some events left to playback by issuing new ones
 (def max-buffered-size 200)
 (def min-buffered-size 10)
-(def buffer-playback-left-events-on-exhaust
-  (add-watch *playback ::buffer-playback-left-events
-             (utils/async-sequential
-              (fn [_ _ _ {:keys [played left] :as playback}]
-                (when (< (count left) min-buffered-size)
-                  #_(js/console.log "buffering more events on exhaust")
-                  (let [buffered-size (count left)
-                        new-events (hga-events/issue (into played left) (fn [new-events] (>= (+ (count new-events) buffered-size) min-buffered-size)))]
-                    (swap! *playback update :left concat new-events)))))))
 
-(def issue-on-iddle-for-ms (/ 16.6 2))
+(defn ->playback-events< [{:keys [behind> played< rewinded<]}]
+  (-> behind>
+      (into played<)
+      (into rewinded<)
+      reverse))
+
+(defn ->all-events<! []
+  (let [playback @*playback
+        left<    @*left<]
+    (concat (->playback-events< playback) left<)))
+
+(def buffer-playback-left-events-on-exhaust
+  (add-watch *left< ::buffer-playback-left-events-on-exhaust
+             (fn [_ _ _ left<]
+               (when (< (count left<) min-buffered-size)
+                 (let [buffered-size    (count left<)
+                       playback-events< (->playback-events< @*playback)
+                       new-left<        (hga-events/issue playback-events< left< (fn [new-events<] (>= (+ (count new-events<) buffered-size) min-buffered-size)))]
+                   (reset! *left< new-left<))))))
+
+(def issue-on-iddle-for-ms (/ 16.6 3))
 (defn buffer-playback-left-events-async-on-idle! []
   (js/requestIdleCallback
    (fn []
-     (when (< (count (:left @*playback)) max-buffered-size)
-       #_(js/console.log "on idle buffering more events")
-       (utils/timing
-        (swap! *playback (fn [{:keys [played left] :as playback}]
-                           (let [new-events (hga-events/issue (into played left)
-                                                              (fn [new-events] (> (utils/*->time*) issue-on-iddle-for-ms))
-                                                              #_(constantly true)
-                                                              #_(fn [new-events] (>= (count new-events) 10)))]
-                             {:played played
-                              :left   (concat left new-events)})))))
+     (utils/timing
+      (let [left<                               @*left<]
+        (when (< (count left<) max-buffered-size)
+          #_(js/console.log "on idle buffering more events")
+          (let [playback-events< (->playback-events< @*playback)
+                new-left< (hga-events/issue playback-events< left<
+                                            (fn [new-events<] (> (utils/*->time*) issue-on-iddle-for-ms))
+                                            #_(constantly true) ;; issue one at a time
+                                            #_(fn [new-events] (>= (count new-events) 10)))]
+            (reset! *left< new-left<)))))
      (buffer-playback-left-events-async-on-idle!))))
 
 (buffer-playback-left-events-async-on-idle!)
@@ -74,31 +155,58 @@
       (update :played conj (first left))
       (update :left rest)))
 
-(def *playing? (atom false))
-(defn play! []
-  (when @*playing?
-    (when-let [scroll-by! hga-state/*scroll-by!]
-      (scroll-by! (+ hga-events/evt-view-s hga-events/sp-padding)))
-    (js/setTimeout play! (/ tt 2))))
 
-(add-watch *playing? ::run-play
-           (fn [_ _ old new]
-             (when (and (not old)
-                        new)
-               (play!))))
+(defn pack [events<]
+  (let [writer (transit/writer :json)]
+    (transit/write writer events<)))
 
-(defonce *played-c->hg (rum/derived-atom [*playback] ::*played-c->hg
-                         (fn [playback]
-                           (-> playback :played hga-events/events->c->hg))))
+(defn pack! []
+  ;; Playback is screen-resolution dependent, so it's state is not reusable across devices.
+  ;; We export playback as events.
+  ;; And on import they can be played on a different screen-resolution.
+  ;; We could additionally remember the last played event and re-create playback state on different device,
+  ;; but that's some hustle and the result is not needed atm.
+  ;; To note: events that are in left< are not needed, as user doesn't even know they're there.
+  ;;
+  ;; Also events have a TON of denormalized, simply to pr-str them will blow up the page.
+  ;; We could pack them by selecting tips, and on import unpack from tips.
+  ;; But there still will be plenty of denormalization, and it blows up the browser on even ~100 events.
+  ;; Alternative is to use transit that does normalization. Let's stick with it.
+  ;; UPD: transit hangs.
+  (let [playback-events< (->playback-events< @*playback)]
+    (pack playback-events<)))
 
-(defn load-playback! []
-  (-> (js/window.showOpenFilePicker)
-      (.then (fn [[new-handle]] (-> new-handle
-                                    (.getFile)
-                                    (.then (fn [file] (-> file
-                                                          (.text)
-                                                          (.then (fn [edn-str] (let [playback (clojure.edn/read-string edn-str)]
-                                                                                 (reset! *playback playback))))))))))))
+(defn unpack [packed]
+  (let [reader (transit/reader :json)]
+    (transit/read reader packed)))
+
+
+#_
+(let [all-events< (->all-events<!)]
+  (log! :before all-events<)
+  (-> all-events<
+      pack
+      (->> (log! :packed))
+      unpack
+      (->> (log! :unpacked))
+      (= all-events<))
+  )
+
+(let [m1 {:a :a}
+      m2 {:a m1}
+      m3 {:a m1}]
+  (identical? (:a m2) (:a m3)))
+
+#_
+(let [playback-events< (->playback-events< @*playback)]
+  (log! :before playback-events<)
+  (-> playback-events<
+      pack
+      (->> (log! :packed))
+      unpack
+      (->> (log! :unpacked))
+      (= playback-events<))
+     )
 
 (defn save-playback! []
   (-> (js/window.showSaveFilePicker (clj->js {"suggestedName" (let [date    (new js/Date)
@@ -108,12 +216,66 @@
                                                                     hours   (.getHours date)
                                                                     minutes (.getMinutes date)
                                                                     seconds (.getSeconds date)]
-                                                                (str "hashgraph-" year "-" month "-" day "_" hours "-" minutes "-" seconds ".edn"))}))
+                                                                (str "hashgraph-" year "-" month "-" day "_" hours "-" minutes "-" seconds ".json"))}))
       (.then (fn [new-handle] (-> new-handle
                                   (.createWritable)
                                   (.then (fn [writable-stream]
-                                           (-> writable-stream (.write (pr-str @*playback)))
+                                           (-> writable-stream (.write (pack!)))
                                            (-> writable-stream (.close)))))))))
+
+(defn load-playback! []
+  (-> (js/window.showOpenFilePicker)
+      (.then (fn [[new-handle]] (-> new-handle
+                                    (.getFile)
+                                    (.then (fn [file] (-> file
+                                                          (.text)
+                                                          (.then (fn [packed]
+                                                                   (let [playback-events< (unpack packed)]
+                                                                     (reset! *left< playback-events<))))))))))))
+
+
+(defn scroll-to-event! [evt]
+  (let [evt-pos        (hga-events/evt-view-position-y evt)
+        evt-scroll-pos (- evt-pos hga-events/playback-size)]
+    (@hga-state/*scroll! evt-scroll-pos :smooth? true)))
+
+(defn play-backwards! []
+  (if-let [prev-evt (second (reverse @*played<))]
+    (scroll-to-event! prev-evt)
+    (@hga-state/*scroll! 0 :smooth? true)))
+
+(defn play-forwards! []
+  (if-let [rewinded-evt (l (first (not-empty (:rewinded @*playback))))]
+    (scroll-to-event! rewinded-evt)
+    (if-let [left-event (l (first (not-empty @*left<)))] ;; better ensure left's are populated
+      (scroll-to-event! left-event)
+      nil)))
+
+
+(def *playing? (atom false))
+(defn play! []
+  (when @*playing?
+    (when-let [scroll-by! @hga-state/*scroll-by!]
+      (scroll-by! (* hga-events/evt-view-offset)))
+    (js/setTimeout play! (/ tt 5))))
+
+(add-watch *playing? ::run-play
+           (fn [_ _ old new]
+             (when (and (not old)
+                        new)
+               (play!))))
+
+(defn play-to-end! []
+  (let [last-evt? (or (last (:rewinded< @*playback))
+                      (last (:played< @*playback)))]
+    (when last-evt?
+      (scroll-to-event! last-evt?))))
+
+#_
+(defn play! []
+  (js/requestAnimationFrame
+   (fn []
+     (js/setTimeout (fn [] (play-forwards!) (play!))))))
 
 (def playback-controls
   [{:description "Load hashgraph playback from disk"
@@ -124,11 +286,11 @@
     :action      save-playback!}
    {:description "Set playback position to start"
     :short       "<--"
-    :action      #(swap! *playback assoc :position 0)
+    :action      #(@hga-state/*scroll! 0)
     :shortcut    #{:ctrl :->}}
    {:description "Rewind playback once backwards"
     :short       "<-"
-    :action      #(swap! *playback update :position (fn [position] (max 0 (dec position))))
+    :action      play-backwards!
     :shortcut    #{:ctrl :shift :->}}
    {:description "Play"
     :short       "Play"
@@ -136,13 +298,13 @@
    {:description "Pause"
     :short       "Pause"
     :action      #(reset! *playing? false)}
-   {:description "Rewind playback once forwards"
-    :short "->"
-    :action #(swap! *playback (fn [{:keys [events position] :as playback}] (assoc playback :position (min (count events) (inc position)))))
-    :shortcut #{:ctrl :->}}
+   {:description "Play next event"
+    :short       "->"
+    :action      play-forwards!
+    :shortcut    #{:ctrl :->}}
    {:description "Set playback position to end"
     :short "->>"
-    :action #(swap! *playback (fn [{:keys [events] :as playback}] (assoc playback :position (count events))))
+    ;; :action      play-to-end!
     :shortcut #{:ctrl :shift :<-}}])
 
 

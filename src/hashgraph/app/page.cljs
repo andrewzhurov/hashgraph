@@ -45,7 +45,7 @@
    [rum.core :as rum]
    [taoensso.timbre :refer-macros [spy info]]
    [taoensso.tufte :as tufte :refer [defnp fnp p profiled profile]]
-   [cljs.math :refer [floor ceil pow]]
+   [cljs.math :refer [round floor ceil pow]]
    [clojure.set :as set]
    [goog.object :as gobject]))
 
@@ -298,12 +298,34 @@
   static-by-hash
   rum/reactive
   (with-event-view-state ::view-state (fn [event-info] (:event-info/event event-info)))
-  [{::keys [view-state]} {:event-info/keys [event round r-concluded? share-stake? color fill witness? stake-map votes received-event] :as event-info}]
+  (with-event-view-state ::sp-view-state (fn [event] (:event/self-parent (:event-info/event event))))
+  (with-event-view-state ::op-view-state (fn [event] (:event/other-parent (:event-info/event event))))
+  [{::keys [view-state sp-view-state op-view-state]} {:event-info/keys [event round r-concluded? share-stake? color fill witness? stake-map votes received-event] :as event-info}]
   (let [{:keys [x y opacity]} view-state
         {r        :round/number
          r-final? :round/final?} round
         share-stake?             (some-> event :event/tx :tx/fn-id (= :share-stake))]
-    [:g {:opacity opacity}
+    [:g.event-info {:opacity opacity}
+
+     [:g ;; refs
+      (when sp-view-state
+        [:line {:opacity (:opacity view-state)
+                :x1      (:x view-state)
+                :y1      (:y view-state)
+                :x2      (:x sp-view-state)
+                :y2      (:y sp-view-state)
+                :style   {:stroke       :lightgray
+                          :stroke-width "2px"}}])
+
+      (when op-view-state
+        [:line {:opacity (:opacity view-state)
+                :x1      (:x view-state)
+                :y1      (:y view-state)
+                :x2      (:x op-view-state)
+                :y2      (:y op-view-state)
+                :style   {:stroke       :lightgray
+                          :stroke-width "2px"}}])]
+
      [:g.event (merge-attr-maps
                 {:class  [(when r-final? "r-final")
                           (when r-concluded? "r-concluded")
@@ -378,7 +400,7 @@
        (received-event-view received-event))]))
 
 
-(def *rendered-evts
+#_(def *rendered-evts
   (rum/derived-atom [hga-playback/*played-c->hg hga-state/*viz-scroll-top] ::*rendered-evts
     (fn [creator->hg scroll-top]
       (->> creator->hg
@@ -389,35 +411,18 @@
                                  (take-while some?)
                                  ;; this only needed for refs viz, perhaps viz refs always instead
                                  ;; actually, when rewinding playback these events will fold onto oher-parents
-                                 (drop-while (fn [evt] (and (when-let [sp-evt (hg/self-parent evt)]  ;; more costly as deeper in history you get
-                                                              (->above-view? (evt-view-position-y sp-evt) scroll-top))
-                                                            (when-let [op-evt (hg/other-parent evt)]
-                                                              (->above-view? (evt-view-position-y op-evt) scroll-top)))))
+                                 #_(drop-while (fn [evt] (and (when-let [sp-evt (hg/self-parent evt)]  ;; more costly as deeper in history you get
+                                                                (->above-view? (evt-view-position-y sp-evt) scroll-top))
+                                                              (when-let [op-evt (hg/other-parent evt)]
+                                                                (->above-view? (evt-view-position-y op-evt) scroll-top)))))
                                  (take-while (fn [evt] (not (->below-view? (evt-view-position-y evt) scroll-top)))))))))))
 
-(def *?alice-tip
-  (rum/derived-atom [hga-playback/*played-c->hg] ::*alice-tip
-    (fn [c->hg]
-      (hg/creator-hg-map->?alice-tip c->hg))))
-
-(def *?last-concluded-round
-  (rum/derived-atom [*?alice-tip] ::*last-concluded-round
-    (fn [?alice-tip]
-      (some-> ?alice-tip hg/->concluded-round))))
-
-(def *?last-received-event
-  (rum/derived-atom [*?last-concluded-round] ::*last-received-event
-    (fn [?last-concluded-round]
-      (some-> ?last-concluded-round :concluded-round/last-received-event))))
-
-(def ?received-event->event->received-event
-  (memoize
-   (fn [?received-event]
-     (if (nil? ?received-event)
-       {}
-       (into {}
-             (map (juxt :received-event/event identity))
-             (take-while some? (iterate :received-event/prev-received-event ?received-event)))))))
+(defn* ^:memoizing ?received-event->event->received-event
+  [?received-event]
+  (if (nil? ?received-event)
+    (hash-map)
+    (let [prev (?received-event->event->received-event (:received-event/prev-received-event ?received-event->event->received-event))]
+      (assoc prev (:received-event/event ?received-event) ?received-event))))
 
 (defn event->color [event]
   (-> event
@@ -464,44 +469,53 @@
           (assoc :event-info/votes (:concluded-voting/votes (hg/->?concluded-voting voting-by event ?atop-cr)))))))
 
 (def *rendered-evt-infos
-  (rum/derived-atom [*rendered-evts *?alice-tip *?last-concluded-round *?last-received-event] ::*rendered-evt-infos
-    (fn [rendered-evts ?alice-tip ?last-concluded-round ?last-received-event]
-      (let [event->received-event (?received-event->event->received-event ?last-received-event)]
-        (->> rendered-evts
-             (map (fn [event]
-                    (let [{r        :round/number
-                           r-final? :round/final?
-                           r-cr     :round/cr :as round} (hg/->round event ?last-concluded-round) ;; been very costly :hashgraph.app.page/round
+  (rum/derived-atom [hga-playback/*playback] ::*rendered-evt-infos
+    (fn [{:keys [played<   ;; asc
+                 rewinded< ;; asc
+                 ]}]
+      (let [played>               (reverse played<)
+            ?main-tip             (hg/events>->main-tip played>)
+            ?last-concluded-round (some-> ?main-tip hg/->concluded-round)
+            ?last-received-event  (some-> ?last-concluded-round :concluded-round/last-received-event)
+            event->received-event (?received-event->event->received-event ?last-received-event)
+            ->event-info (fn [event]
+                           (let [{r        :round/number
+                                  r-final? :round/final?
+                                  r-cr     :round/cr :as round} (hg/->round event ?last-concluded-round) ;; been very costly :hashgraph.app.page/round
 
-                          witness?          (hg/witness? event r-cr)
-                          to-receive-votes? (and witness?
-                                                 r-final?)
-                          ?concluded-in-cr  (when to-receive-votes?
-                                              (some->> ?last-concluded-round
-                                                       (iterate :concluded-round/prev-concluded-round)
-                                                       (take-while some?)
-                                                       (some (fn [cr] (when (= (:concluded-round/r cr) r) cr)))))
+                                 witness?          (hg/witness? event r-cr)
+                                 to-receive-votes? (and witness?
+                                                        r-final?)
+                                 ?concluded-in-cr  (when to-receive-votes?
+                                                     (some->> ?last-concluded-round
+                                                              (iterate :concluded-round/prev-concluded-round)
+                                                              (take-while some?)
+                                                              (some (fn [cr] (when (= (:concluded-round/r cr) r) cr)))))
 
-                          received-votes? (boolean ?concluded-in-cr)
-                          receives-votes? (and to-receive-votes?
-                                               (not received-votes?)
-                                               ?alice-tip
-                                               (hg/ancestor? ?alice-tip event)) ;; more costly the further tip is from the roots
-                          ?received-event (event->received-event event)
-                          voting-by       (if received-votes?
-                                            (-> ?concluded-in-cr :concluded-round/witness-concluded)
-                                            ?alice-tip)]
-                      ;; concluded stuff will be memoized
-                      ;; TODO enhance memoization to memoize based on predicate
-                      (->enriched-event-info (cond-> (hash-map :event-info/event             event
-                                                               :event-info/round             round
-                                                               :event-info/witness?          witness?
-                                                               :event-info/to-receive-votes? to-receive-votes?
-                                                               :event-info/received-votes?   received-votes?
-                                                               :event-info/receives-votes?   receives-votes?
-                                                               :event-info/voting-by         voting-by
-                                                               :event-info/?concluded-in-cr  ?concluded-in-cr)
-                                               ?received-event (assoc :event-info/received-event ?received-event)))))))))))
+                                 received-votes? (boolean ?concluded-in-cr)
+                                 receives-votes? (and to-receive-votes?
+                                                      (not received-votes?)
+                                                      ?main-tip
+                                                      (hg/ancestor? ?main-tip event)) ;; more costly the further tip is from the roots
+                                 ?received-event (event->received-event event)
+                                 voting-by       (if received-votes?
+                                                   (-> ?concluded-in-cr :concluded-round/witness-concluded)
+                                                   ?main-tip)]
+                             ;; concluded stuff will be memoized
+                             ;; TODO enhance memoization to memoize based on predicate
+                             (->enriched-event-info (cond-> (hash-map :event-info/event             event
+                                                                      :event-info/round             round
+                                                                      :event-info/witness?          witness?
+                                                                      :event-info/to-receive-votes? to-receive-votes?
+                                                                      :event-info/received-votes?   received-votes?
+                                                                      :event-info/receives-votes?   receives-votes?
+                                                                      :event-info/voting-by         voting-by
+                                                                      :event-info/?concluded-in-cr  ?concluded-in-cr)
+                                                      ?received-event (assoc :event-info/received-event ?received-event)))))]
+        [(->> (reverse played<)
+              (map ->event-info))
+         (->> (reverse rewinded<)
+              (map ->event-info))]))))
 
 
 (defn on-next-frame! [callback]
@@ -512,32 +526,13 @@
 
 (rum/defc viz < rum/reactive
   []
-  (let [rendered-evts      (rum/react *rendered-evts)
-        rendered-evt-infos (rum/react *rendered-evt-infos)]
-    [:svg#viz {:height (hga-events/->viz-height (rum/react hga-playback/*played-c->hg))}
+  (let [[played-evt-infos> rewinded-evt-infos>] (rum/react *rendered-evt-infos)]
+    [:svg#viz {:height (hga-events/->viz-height (-> played-evt-infos> first :event-info/event))} ;; TODO change smoothly
      [:g.events-view
-      (for [evt rendered-evts]
-        (event-refs-view evt))
-
-      (for [evt-info rendered-evt-infos]
+      (for [evt-info played-evt-infos>]
+        (event-view evt-info))
+      (for [evt-info rewinded-evt-infos>]
         (event-view evt-info))]]))
-
-#_
-(rum/defc member-stake-view [member stake-map]
-  (let [svg-size (+ (* vote-view-r 2) 10)]
-    [:svg {:width  svg-size
-           :height svg-size}
-     [:g.member-stake
-      (let [stake-holder (:member/name member)]
-        (let [member                                                                (-> stake-holder hg-members/member-name->person)
-              [start-vote-circumferance vote-circumferance _end-vote-circumferance] (vote-circumferance-start+for+end stake-holder stake-map)]
-          [:circle {:r                vote-view-r
-                    :cx               (/ svg-size 2)
-                    :cy               (/ svg-size 2)
-                    :fill             :transparent
-                    :stroke           (color-rgba-str (:member/color-rgb member) 1)
-                    :stroke-width     vote-view-stroke-width
-                    :stroke-dasharray (str "0 " start-vote-circumferance " " vote-circumferance " " vote-view-circumferance)}]))]]))
 
 (def members-style
   [[:.members {:position         :absolute
@@ -556,8 +551,9 @@
 (def members-style-css (css members-style))
 
 (rum/defc members-view < rum/reactive []
-  (let [last-cr (rum/react *?last-concluded-round)
-        stake-map (hg/concluded-round->stake-map last-cr)]
+  (let [?main-tip             (hg/events>->main-tip (reverse (rum/react hga-playback/*played<)))
+        ?last-concluded-round (some-> ?main-tip hg/->concluded-round)
+        stake-map             (hg/concluded-round->stake-map ?last-concluded-round)]
     [:<>
      [:style members-style-css]
      [:div.members
@@ -575,14 +571,24 @@
                                                "lightgray" "black")}}
             member-name]]))]]))
 
-
 (rum/defc viz-wrapper
   <
   rum/reactive
   {:did-mount
    (fn [state]
      (let [dom-node (rum/dom-node state)]
-       (reset! hga-state/*scroll-by! (fn [px] (.scrollBy dom-node 0 px)))
+       (reset! hga-state/*scroll-by! (fn [px & {:keys [smooth?]}]
+                                       (.scrollBy dom-node (if smooth?
+                                                             (js-obj "top" px
+                                                                     "behavior" "smooth")
+                                                             (js-obj "top" px)))))
+       (reset! hga-state/*scroll! (fn [px & {:keys [smooth?]}]
+                                    #_(set! (.-scrollTop dom-node) px)
+                                    (.scroll dom-node (if smooth?
+                                                             (js-obj "top" px
+                                                                     "behavior" "smooth")
+                                                             (js-obj "top" px))) ;; doesn't scroll pixel-perfect on zoom
+                                    ))
        (.addEventListener dom-node "scroll"
                           ;; V may cause stale viz-scroll-top
                           (once-per-render #(do #_(reset! hga-playback/*playing? false)
@@ -604,7 +610,6 @@
 (rum/defc viz-section-view
   []
   [:div {:style {:position :relative}}
-   #_
    (viz-section-controls-view)
 
    (viz-wrapper)

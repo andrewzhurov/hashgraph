@@ -6,6 +6,9 @@
             [taoensso.tufte :as tufte]
             [goog.object :as gobject]))
 
+#_
+(macroexpand '(defn* ^:memoizing ^:tracing test [a b] (+ 1 b)))
+
 (defn test []
   (let [timed-result (timed (+ 1 1))]
     (assert-warn (vector? timed-result))

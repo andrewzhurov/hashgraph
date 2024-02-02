@@ -1,4 +1,5 @@
-(ns hashgraph.utils)
+(ns hashgraph.utils
+  (:require [taoensso.tufte :as tufte]))
 
 (def ^:dynamic *parent-log-path* nil)
 (def ^:dynamic *parent-log-path-logging?* true)
@@ -25,8 +26,8 @@
 (def ^:dynamic *trace-atom* nil)
 (def ^:dynamic *parent-trace-atom* nil)
 
-#?(:clj  (def log! println)
-   :cljs (def log! js/console.log))
+#?(:clj  (def ^:dynamic log! println)
+   :cljs (def ^:dynamic log! js/console.log))
 
 (defmacro l [expr]
   `(let [res# ~expr]
@@ -34,9 +35,26 @@
      res#))
 
 ;; is a letl macro and not a l-binds macro to make litner happy
+
+(defmacro log-relative [path & exprs]
+  `(binding [*parent-log-path* ~path]
+     ~@exprs))
+
 (defmacro letl
-  "Logs bindings from sym to value.
-  Can be used in 'let' as (let (l-binds [a (+ 1 1)])), would log 'a => 2'."
+  "Logs bindings from sym to value."
+  [binds & exprs]
+  `(let ~(->> binds
+              (partition 2)
+              (mapcat (fn [bind]
+                        (let [[?to expr] bind]
+                          [?to `(let [result# ~expr]
+                                  (log! ~(pr-str ?to) result#)
+                                  result#)])))
+              vec)
+     ~@exprs))
+
+(defmacro letp
+  "Profiles bindings let bindings."
   [binds & exprs]
   `(let ~(->> binds
               (partition 2)
@@ -44,9 +62,7 @@
                         (if (-> bind first symbol? not)
                           bind
                           (let [[?sym expr] bind]
-                            [?sym `(let [result# ~expr]
-                                     (log! ~(pr-str ?sym) result#)
-                                     result#)]))))
+                            [?sym `(tufte/p ~(keyword ?sym) ~expr)]))))
               vec)
      ~@exprs))
 

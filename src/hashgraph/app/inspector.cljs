@@ -591,7 +591,8 @@
               @*table-view?
               ;; some keys intersect
               #_(->> resolved-s (map (comp set keys)) (apply set/intersection) (not-empty))
-              (for [[_ks ms-group] (group-by (comp namespace first first) resolved-s)]
+              (for [[_ks ms-group] (->> resolved-s (group-by (fn [m] (let [?key (first (first m))]
+                                                                       (when (keyword? ?key) (namespace ?key))))))]
                 (table-view ms-group opts)))
          (->> resolved-s (map-indexed (fn [idx s-el]
                                         ;; conjing path leads to toggle between unfolded table and folded elements, if key intersection enabled ^

@@ -1,10 +1,11 @@
 (ns hashgraph.app.events
   (:require
    [cljs.math :refer [floor ceil]]
+   [clojure.set :as set]
    [rum.core :as rum]
    [hashgraph.main :as hg]
    [hashgraph.members :as hg-members]
-   [hashgraph.utils :refer-macros [l defn*] :as utils]
+   [hashgraph.utils :refer [log!] :refer-macros [l defn*] :as utils]
    [taoensso.timbre :refer-macros [spy]]
    [taoensso.tufte :as tufte :refer [defnp p profiled profile]]))
 
@@ -12,12 +13,17 @@
 (def evt-view-s (* evt-view-r 2))
 (def sp-padding  (* evt-view-s 1.5))
 (def hgs-padding  (* sp-padding 2))
+(def evt-view-offset (+ evt-view-s sp-padding))
 (def members-height 70)
 (def window-height js/window.innerHeight)
+(def window-size window-height)
+
 
 (def load-area-height (+ sp-padding evt-view-s))
-(def below-viz-buffer window-height)
-(def viz-offset (- window-height members-height load-area-height))
+(def below-viz-buffer (/ window-height 2))
+(def playback-size (-> window-size
+                       (- load-area-height members-height)))
+(def viz-offset playback-size)
 
 (def wit-view-r (* 2 evt-view-r))
 
@@ -68,11 +74,8 @@
            y (evt-view-position-y evt)]
        [x y]))))
 
-(defn ->viz-height [creator->hg]
-  (-> (or (some-> creator->hg
-                  vals
-                  (->> (sort-by :event/creation-time))
-                  last
+(defn ->viz-height [event]
+  (-> (or (some-> event
                   evt-view-position-y
                   (+ members-height)
                   (+ load-area-height))
@@ -143,18 +146,24 @@
                                                [[1 3] [2 3] [3 3]]))]
                        (make-share-stake-tx from to percent)))))
 
-(defn* ^:memoizing events->c->hg [events]
-  (if (empty? events)
-    {}
-    (let [[event & rest-events] events
-          prev-c->hgs (events->c->hg rest-events)]
+(defn* ^:memoizing events>->c->hg [[event & rest-events>]]
+  (if (nil? event)
+    (hash-map)
+    (let [prev-c->hgs (events>->c->hg rest-events>)]
       (assoc prev-c->hgs (:event/creator event) event))))
 
-(defn* issue* [current-events ->enough? new-events]
-  (let [events               (into current-events new-events)
-        creator->hg          (-> events events->c->hg)
-        alice-tip            (-> creator->hg hg/creator-hg-map->?alice-tip)
-        cr                   (-> alice-tip hg/->concluded-round)
+(defn c->hg->events> [c->hg]
+  (let [tips        (vals c->hg)
+        _ (log! :tips tips)
+        events> (-> tips
+                    ;; this recursion may blowup
+                    (->> (map hg/ancestors)
+                         (log! :ancestors)
+                         (apply set/union))
+                    (into tips)
+                    (->> (sort-by :event/creation-time >)))]
+    events>))
+
 (defn ->last-creation-time [events]
   (:event/creation-time (last events)))
 (defn ->new-creation-time [events]
@@ -179,12 +188,18 @@
       ;; try again, with a different random offset
       (->next-creation-time prev-creation-time))))
 
+(defn* issue* [playback-events< left< ->enough? new-events<]
+  (let [events<              (concat playback-events< left< new-events<)
+        events>              (reverse events<)
+        creator->hg          (-> events> events>->c->hg)
+        main-tip             (-> events> hg/events>->main-tip)
+        cr                   (-> main-tip hg/->concluded-round)
         stake-map            (-> cr hg/concluded-round->stake-map)
         current-member-names (set (keys stake-map))
         sender               (rand-nth (vec current-member-names))
         ?sender-hg           (get creator->hg sender)
 
-        new-events
+        new-events<
         (if (nil? ?sender-hg)
           (let [new-sender-hg (hash-map :event/creator sender
                                         :event/creation-time
@@ -196,7 +211,7 @@
                                                          last)]
                                           (->next-creation-time highest-hg-creation-time)
                                           0))]
-            (conj new-events new-sender-hg))
+            (conj new-events< new-sender-hg))
 
           (let [sender-hg                    ?sender-hg
                 receivers                    (-> current-member-names
@@ -227,9 +242,9 @@
                                          ?receiver-hg (assoc :event/self-parent ?receiver-hg)
                                          :always      with-once-per-round-random-share-stake-tx)]
                                    new-receiver-hg)))
-                         new-events))))]
-    (if (->enough? new-events)
-      new-events
-      (recur current-events ->enough? new-events))))
+                         new-events<))))]
+    (if (->enough? new-events<)
+      (sort-by :event/creation-time (concat left< new-events<))
+      (recur playback-events< left< ->enough? new-events<))))
 
-(defn issue [current-events ->enough?] (issue* current-events ->enough? []))
+(defn issue [playback-events< left< ->enough?] (issue* playback-events< left< ->enough? []))

@@ -1,6 +1,6 @@
 (ns hashgraph.lab
   "A place to test the universe to get insight. A playground."
-  (:require [hashgraph.utils :as utils]
+  (:require [hashgraph.utils :refer-macros [timed] :as utils]
             [hashgraph.app.playback :as hga-playback]
             [goog.object :as gobject]))
 
@@ -220,24 +220,48 @@ hashgraph.utils/sorted-set-by*
 
 
 ;; is it faster to strore mem args in hash-map by args or by (-hash args)?
-(let [nths     (doall (range 0 1000))
-      argss    (doall (map list (map utils/nested-range-map nths)))
-      thm1     (transient (hash-map))
-      thm2     (transient (hash-map))
-      [t1 _] (utils/timed
-                  (doseq [args argss]
-                    (assoc! thm1 args args)
-                    (get thm1 args)))
-      [t2 _] (utils/timed
-                  (doseq [args argss]
-                    (assoc! thm2 (-hash args) args)
-                    (get thm2 (-hash args))))]
-  [t1 t2 (/ t1 t2)])
-;; associng args is ~200-600 TIMES slower than their hash
-;; I suspect it won't be such a big difference on smaller args
+(def bench-mem-by-args-vs-by-args-hash
+  (let [*last-time (atom 0)]
+    (fn []
+      (let [n      1000
+            from-n (* @*last-time n)
+            to-n   (* (inc @*last-time) n)
+            nths   (doall (range from-n to-n))
+            argss  (doall (map list (doall (map utils/nested-range-map nths))))
+            argss-shuffled (shuffle argss)
+            argss1 (take (/ n 2) argss-shuffled)
+            argss2 (drop (/ n 2) argss-shuffled)
+            thm1   (transient (hash-map))
+            thm2   (transient (hash-map))
+            [t1 _] (utils/timed
+                    (doall
+                     (doseq [args argss1]
+                       (assoc! thm1 args args))))
+            [t2 _] (utils/timed
+                    (doall
+                     (doseq [args argss2]
+                       (assoc! thm2 (-hash args) args))))
+
+            [get-t1 _] (utils/timed
+                        (doall
+                         (doseq [args argss1]
+                           (get thm1 args))))
+            [get-t2 _] (utils/timed
+                        (doall
+                         (doseq [args argss2]
+                           (get thm2 (-hash args)))))]
+        (swap! *last-time inc)
+        {:add [t1 t2 (/ t1 t2)]
+         :get [get-t1 get-t2 (/ get-t1 get-t2)]}))))
+#_(bench-mem-by-args-vs-by-args-hash)
+;; adding is about the same
+;; getting is ~1-2 times faster by hash
 
 
-
+;; is it faster to compare args by identical? vs lookup by args?
+;; will only be of use for only-last mem
+;; or for a hybrid mem of hash-map + last-call-mem
+identical?
 
 
 
@@ -365,35 +389,76 @@ hashgraph.utils/sorted-set-by*
 ;; storing cljs data structures in js-obj is daaaammmn slow, even on n set to 100
 ;; any better when storing by hash?
 
-(def last-time11 (volatile! 1))
-(let [n     1000
-      thm   (transient (hash-map))
-      obj   (js-obj)
-      from  (* n @last-time)
-      to    (* n (inc @last-time))
-      nths     (doall (range from to))
-      args-arr (doall (->> nths (mapv (fn [nth] (list (utils/nested-range-map from nth) (utils/nested-range-map from nth))))))]
-  (vreset! last-time11 (inc @last-time))
-  (let [[thm-t _] (timed
-                   (loop [prev-args nil
-                          [args & next-args] args-arr]
-                     (when args
-                       (when prev-args
-                         (get thm (-hash prev-args)))
-                       (assoc! thm (-hash args) args)
-                       (recur args next-args))))
+(def bench-obj-vs-transient-hash-map
+  (let [last-time11 (volatile! 100)]
+    (fn []
+      (let [n        2000
+            thm      (transient (hash-map))
+            obj      (js-obj)
+            from     (* n @last-time11)
+            to       (* n (inc @last-time11))
+            nths     (doall (range from to))
+            args-arr
+            (loop [out []
+                   [nth & rest-nths] nths]
+              (if-not nth
+                out
+                (recur (conj out (list (utils/nested-range-map from nth) (utils/nested-range-map from nth))) rest-nths)))
+            #_(trampoline (fn build-args [out [nth & rest-nths]]
+                                   (if-not nth
+                                     out
+                                     (let [new-out (conj out (list (utils/nested-range-map from nth) (utils/nested-range-map from nth)))]
+                                       #(build-args new-out rest-nths))))
+                                 []
+                                 nths)]
+        (println "built args" (count args-arr))
+        (vreset! last-time11 (inc @last-time11))
+        (let [[hashing-t _] (timed
+                             (doall
+                              (doseq [args args-arr]
+                                (-hash args))))
+              [thm-add-t _] (timed
+                             (doall
+                              (doseq [args args-arr]
+                                (assoc! thm (-hash args) args))))
 
-        [obj-t _] (timed
-                   (loop [prev-args nil
-                          [args & next-args] args-arr]
-                     (when args
-                       (when prev-args
-                         (goog.object/get obj (-hash prev-args)))
-                       (goog.object/set obj (-hash args) args)
-                       (recur args next-args))))]
-    [thm-t obj-t (/ thm-t obj-t)]))
-;; ~300-600 TIMES faster to store by hash in js-obj, WOW.
-;; js-obj is daaammmn fast with hashes
+              [obj-add-t _] (timed
+                             (doall
+                              (doseq [args args-arr]
+                                (goog.object/set obj (-hash args) args))))
+
+              shuffled-args  (doall (shuffle args-arr))
+              shuffled-args2 (doall (shuffle args-arr))
+              shuffled-args3 (doall (shuffle args-arr))
+              [thm-get-t _] (timed
+                             (do (doall
+                                  (doseq [args shuffled-args]
+                                    (get thm (-hash args))))
+                                 (doall
+                                  (doseq [args shuffled-args2]
+                                    (get thm (-hash args))))
+                                 (doall
+                                  (doseq [args shuffled-args3]
+                                    (get thm (-hash args))))))
+
+              [obj-get-t _] (timed
+                             (do (doall
+                                  (doseq [args shuffled-args]
+                                    (goog.object/get obj (-hash args))))
+                                 (doall
+                                  (doseq [args shuffled-args2]
+                                    (get thm (-hash args))))
+                                 (doall
+                                  (doseq [args shuffled-args3]
+                                    (get thm (-hash args))))))]
+          [hashing-t
+           [thm-add-t obj-add-t (/ thm-add-t obj-add-t)]
+           [thm-get-t obj-get-t (/ thm-get-t obj-get-t)]])))))
+
+(bench-obj-vs-transient-hash-map)
+;; on n 1000,
+;; about the same performance on add and get
+;; although js-obj is generally a bit faster, more so on read
 
 #_
 (cljs.pprint/pprint
@@ -546,3 +611,68 @@ hashgraph.utils/sorted-set-by*
       (let [new-t* (assoc! t* [nth] {nth nth})]
         (when (not= (type t*) (type new-t*)) (println [(type t*) (type new-t*)]))
         (recur new-t* (dec nth))))))
+
+
+;; is it faster to take-while&drop, split-with or alternative split-with, that does it in one pass?
+
+(defn split-with* [pred coll]
+  (loop [coll* coll
+         tw-acc []]
+    (if (empty? coll*)
+      [tw-acc coll*]
+      (let [[el & rest-coll] coll*]
+        (if-not (pred el)
+          [tw-acc coll*]
+          (recur rest-coll (conj tw-acc el)))))))
+
+(let [n    10000
+      m    5000
+      r    (doall (range n))
+      pred #(do (doall (range 1000)) (< % m))]
+  (let [[twd-t twd-r] (timed
+                       (let [taken   (doall (take-while pred r))
+                             to-drop (count taken)
+                             dropped (doall (drop to-drop r))]
+                         [taken dropped]))
+        [sw-t sw-r]   (timed
+                       (let [sw-r (split-with pred r)
+                             [tw dw] sw-r]
+                       (doall tw)
+                       (doall dw)
+                       sw-r))
+        [swa-t swa-r] (timed
+                       (let [swa-r (split-with* pred r)
+                             [tw dw] swa-r]
+                         (doall tw)
+                         (doall dw)
+                         swa-r))]
+    (assert (= twd-r sw-r swa-r))
+    [twd-t sw-t swa-t]))
+;; split-with is generally faster on a fast pred, and ~x2 times slower on a more costly pred
+;; split-with* is a bit faster than take&drop on a more costly pred
+
+
+#_
+(do (let [r (vec (doall (range 0 1000000)))]
+      (time (butlast r)))
+    (let [r (doall (range 0 10000))]
+      (time (doall (rest (doall (reverse r))))))
+    1)
+;; butlast is damm slow
+
+
+;; is it faster to concat two vectors or into?
+#_
+(let [v1 (doall (vec (range 0 10000)))
+      v2 (doall (vec (range 10000 20000)))]
+  (time (doall (concat v1 v2)))
+  (time (doall (into v1 v2)))
+  1)
+;; concatting is ~1-2 times faster
+
+;; is it faster to (concat (reverse)) or into?
+(let [s1> (doall (reverse (range 0 100)))
+      s2< (doall (range 100 110))]
+  (time (into s1> s2<))
+  (time (concat (reverse s2<) s1>)))
+;; into's faster
