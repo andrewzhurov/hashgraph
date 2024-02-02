@@ -20,7 +20,7 @@
 
 
 (def load-area-height (+ sp-padding evt-view-s))
-(def below-viz-buffer (/ window-height 2))
+(def below-viz-buffer (* 20 evt-view-offset))
 (def playback-size (-> window-size
                        (- load-area-height members-height)))
 (def viz-offset playback-size)
