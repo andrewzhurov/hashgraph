@@ -141,8 +141,9 @@ That's perhaps due to dirty mem lookup.
 * TODO hardly reachable members may issue it's stale event, which will make refs look not pretty
 [[~/notes/org-roam/store/sha256/cba97c7bda1f19a7835ebf4c531f784986ce1befb32492c3d3e4638238490e89]]
 * maybe lookup from mem as goog.object will be faster than (transient (hash-map))
-It is 300-600 TIMES faster when storing args by hash in js-obj compared to transient hsah-map. WOW.
-** TODO switch mem to js-obj by args hash
+It's about the same speed, be it js-obj is a bit faster
+** TODO maybe switch mem to js-obj by args hash
+* TODO switch mem warmup to loop with recur
 
 * objectives
 ** understand the algo to see how it can be applied in NG
