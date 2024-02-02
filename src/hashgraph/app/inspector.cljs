@@ -614,9 +614,10 @@
 
 (rum/defc inspector-view-number < rum/static
   [num opts]
-  [:div.number (if-not (int? num)
-                 (.toFixed num 1)
-                 num)])
+  [:div.number {:title num}
+   (if-not (int? num)
+     (.toFixed num 1)
+     num)])
 
 (def name->compact-name
   (memoize
