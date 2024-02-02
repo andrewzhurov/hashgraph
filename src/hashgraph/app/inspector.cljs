@@ -101,22 +101,23 @@
                           (and *parent-log-path-logging?* *parent-log-path*) (update-in (->log-path (into *parent-log-path* *log-path*) path) with value)
                           *log-path-logging?* (update-in (->log-path *log-path* path) with value)))))
 
+(defn ->path [path-or-key] (if (seq? path-or-key) path-or-key (vector path-or-key)))
 (defn log!
   ([value] (log! [] value))
-  ([path value]
-   (log!-with conj path value)
+  ([path-or-key value]
+   (log!-with conj (->path path-or-key) value)
    value))
 
 (defn unlog!
   ([value] (unlog! [] value))
-  ([path value]
-   (log!-with disj path value)
+  ([path-or-key value]
+   (log!-with disj (->path path-or-key) value)
    nil))
 
 (defn log-set!
   ([value] (log-set! [] value))
-  ([path value]
-   (log!-with (fn [_old new] new) path value)
+  ([path-or-key value]
+   (log!-with (fn [_old new] new) (->path path-or-key) value)
    value))
 
 (def ->in?
