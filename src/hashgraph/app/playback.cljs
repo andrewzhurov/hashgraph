@@ -245,9 +245,9 @@
     (@hga-state/*scroll! 0 :smooth? true)))
 
 (defn play-forwards! []
-  (if-let [rewinded-evt (l (first (not-empty (:rewinded @*playback))))]
+  (if-let [rewinded-evt (first (not-empty (:rewinded< @*playback)))]
     (scroll-to-event! rewinded-evt)
-    (if-let [left-event (l (first (not-empty @*left<)))] ;; better ensure left's are populated
+    (if-let [left-event (first (not-empty @*left<))] ;; better ensure left's are populated
       (scroll-to-event! left-event)
       nil)))
 
