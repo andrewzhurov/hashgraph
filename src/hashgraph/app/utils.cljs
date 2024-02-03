@@ -1,6 +1,6 @@
 (ns hashgraph.app.utils
   (:require
-   [hashgraph.app.events :as hga-events]
+   [hashgraph.app.view :as hga-view]
    [hashgraph.utils :refer [log!] :refer-macros [l letl] :as utils]))
 
 (defn ->view-bound-min [scroll-top]
@@ -22,5 +22,5 @@
 
 (defn ->above-playback-view? [y scroll-top]
   (let [playback-view-bound-max (-> (->view-bound-max scroll-top)
-                                    (- hga-events/load-area-height hga-events/members-height))]
+                                    (- hga-view/load-area-size hga-view/members-size))]
     (> y playback-view-bound-max)))

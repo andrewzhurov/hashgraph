@@ -1,17 +1,16 @@
 (ns hashgraph.app.transitions
   (:require [rum.core :as rum]
+            [goog.object]
+            [cljs.core :as core]
+            [hashgraph.main :as hg]
+            [hashgraph.app.view :as hga-view]
             [hashgraph.app.timing :as hga-timing]
             [hashgraph.app.events :as hga-events]
-
             [hashgraph.app.inspector :refer [log!]]
             [hashgraph.utils :refer [safe-assoc! safe-assoc-in!
                                      safe-update! safe-update-in!]
              :refer-macros [l letl]
-             :as utils]
-            [hashgraph.main :as hg]
-            [goog.object]
-            [goog.object :as gobject]
-            [cljs.core :as core]))
+             :as utils]))
 
 (def tt 500) ;; transition time ms
 
@@ -82,8 +81,8 @@
                  (let [evt-hash    (-> evt (-hash))
                        ?op         (-> evt :event/other-parent)
                        ?op-current (some-> ?op (-hash) ->current)
-                       to-x        (-> evt hga-events/evt-view-position-x)
-                       to-y        (-> evt hga-events/evt-view-position-y)
+                       to-x        (-> evt hga-view/evt->x)
+                       to-y        (-> evt hga-view/evt->y)
                        current     (-> evt-hash ->current)
                        prop->t     (-> evt-hash ->prop->t)]
                    (if ?op-current

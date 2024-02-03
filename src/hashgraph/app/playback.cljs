@@ -4,6 +4,7 @@
             [rum.core :as rum]
             [hashgraph.main :as hg]
             [hashgraph.members :as hg-members]
+            [hashgraph.app.view :as hga-view]
             [hashgraph.app.state :as hga-state]
             [hashgraph.app.events :as hga-events]
             [hashgraph.app.transitions :as hga-transitions]
@@ -63,9 +64,9 @@
                    (do
                      #_(js/console.log "play")
                      ;; TODO switch to split-with*
-                     (let [[to-behind< new-played<]          (->> played< (split-with #(hga-utils/->below-view? (hga-events/evt-view-position-y %) new-scroll-top)))
+                     (let [[to-behind< new-played<]          (->> played< (split-with #(hga-utils/->below-view? (hga-view/evt->y %) new-scroll-top)))
                            new-behind>                       (into behind> to-behind<) ;; TODO perhaps try storing in separate atom
-                           [to-play-rewinded< new-rewinded<] (->> rewinded< (split-with #(not (hga-utils/->above-playback-view? (hga-events/evt-view-position-y %) new-scroll-top))))
+                           [to-play-rewinded< new-rewinded<] (->> rewinded< (split-with #(not (hga-utils/->above-playback-view? (hga-view/evt->y %) new-scroll-top))))
                            new-just-played<                  to-play-rewinded<
                            new-played<                       (concat new-played< to-play-rewinded<)]
                        (if (not (empty? new-rewinded<))
@@ -75,7 +76,7 @@
                                       :played<   new-played<
                                       :rewinded< new-rewinded<}))
                          (let [left<                     @*left<
-                               [to-play-left< new-left<] (->> left< (split-with #(not (hga-utils/->above-playback-view? (hga-events/evt-view-position-y %) new-scroll-top))))
+                               [to-play-left< new-left<] (->> left< (split-with #(not (hga-utils/->above-playback-view? (hga-view/evt->y %) new-scroll-top))))
                                new-played<               (concat new-played< to-play-left<)
                                new-just-played<          (concat new-just-played< to-play-left<)]
                            (reset! hga-transitions/*just-played< new-just-played<) ;; fire first, so transitions are ready, brittle :/
@@ -87,9 +88,9 @@
 
                    (do #_(js/console.log "rewind")
                        (let [played>                  (reverse played<)
-                             [to-play> new-behind>]   (->> behind>     (split-with #(not (hga-utils/->below-view? (hga-events/evt-view-position-y %) new-scroll-top))))
+                             [to-play> new-behind>]   (->> behind>     (split-with #(not (hga-utils/->below-view? (hga-view/evt->y %) new-scroll-top))))
                              new-played>              (concat played> to-play>)
-                             [to-rewind> new-played>] (->> new-played> (split-with #(hga-utils/->above-playback-view? (hga-events/evt-view-position-y %) new-scroll-top)))
+                             [to-rewind> new-played>] (->> new-played> (split-with #(hga-utils/->above-playback-view? (hga-view/evt->y %) new-scroll-top)))
                              new-just-rewinded>       to-rewind>
                              [new-rewinded< to-left<] (->> rewinded< (split-with hga-transitions/->in-transition?))
                              new-rewinded<            (into new-rewinded< to-rewind>)
@@ -231,8 +232,8 @@
 
 
 (defn scroll-to-event! [evt]
-  (let [evt-pos        (hga-events/evt-view-position-y evt)
-        evt-scroll-pos (- evt-pos hga-events/playback-size)]
+  (let [evt-pos        (hga-view/evt->y evt)
+        evt-scroll-pos (- evt-pos hga-view/playback-size)]
     (@hga-state/*scroll! evt-scroll-pos :smooth? true)))
 
 (defn play-backwards! []
@@ -252,7 +253,7 @@
 (defn play! []
   (when @*playing?
     (when-let [scroll-by! @hga-state/*scroll-by!]
-      (scroll-by! (* hga-events/evt-view-offset)))
+      (scroll-by! (* hga-view/evt-offset)))
     (js/setTimeout play! (/ hga-transitions/tt 5))))
 
 (add-watch *playing? ::run-play
@@ -308,11 +309,6 @@
 (rum/defc playback-controls-view < rum/reactive
   []
   [:div
-   [:input {:type          :range
-            :min           0
-            :max           (count (:events (rum/react *playback)))
-            :value         (:position (rum/react *playback))
-            :on-change     #(swap! *playback assoc :position (int (-> % .-target .-value)))}]
    (for [{:keys [description short action]} playback-controls]
      [:button {:key short
                :title description

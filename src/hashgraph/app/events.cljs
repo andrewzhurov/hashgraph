@@ -8,80 +8,6 @@
    [hashgraph.utils :refer [log!] :refer-macros [l defn*] :as utils]
    [taoensso.timbre :refer-macros [spy]]
    [taoensso.tufte :as tufte :refer [defnp p profiled profile]]))
-
-(def evt-view-r 10)
-(def evt-view-s (* evt-view-r 2))
-(def sp-padding  (* evt-view-s 1.5))
-(def hgs-padding  (* sp-padding 2))
-(def evt-view-offset (+ evt-view-s sp-padding))
-(def members-height 70)
-(def window-height js/window.innerHeight)
-(def window-size window-height)
-
-
-(def load-area-height (+ sp-padding evt-view-s))
-(def below-viz-buffer (* 20 evt-view-offset))
-(def playback-size (-> window-size
-                       (- load-area-height members-height)))
-(def viz-offset playback-size)
-
-(def wit-view-r (* 2 evt-view-r))
-
-(def vote-view-r (-> wit-view-r
-                     (- (-> wit-view-r
-                            (- evt-view-r)
-                            (/ 2)))))
-(def vote-view-circumferance (* 2 js/Math.PI vote-view-r))
-#_(def vote-circumferance
-  (memoize
-   (fn [event]
-     (let [member (-> event hg/event->member)]
-       (-> vote-view-circumferance
-           (/ hg/total-stake)
-           (* (:member/stake member)))))))
-(def vote-view-stroke-width (/ vote-view-r 2))
-
-(def idx-view-position-x
-  (fn [idx]
-    (-> idx
-        (* (+ hgs-padding evt-view-s))
-        (+ evt-view-r hgs-padding))))
-
-(def evt-view-position-x
-  (fn [evt]
-    (-> evt :event/creator hg-members/member-name->person :member/idx idx-view-position-x)))
-
-(def t->view-position-y
-  (memoize
-   (fn [t]
-     (-> t
-         (+ viz-offset))
-     #_
-     (-> t
-         (* (+ evt-view-s sp-padding))
-         (+ evt-view-r sp-padding)
-         (+ viz-offset)))))
-
-(def evt-view-position-y
-  (memoize ;; over time will become slower to lookup than to calc
-   (fn [evt]
-     (-> evt :event/creation-time t->view-position-y))))
-
-(def evt-view-position
-  (memoize
-   (fn [evt]
-     (let [x (evt-view-position-x evt)
-           y (evt-view-position-y evt)]
-       [x y]))))
-
-(defn ->viz-height [event]
-  (-> (or (some-> event
-                  evt-view-position-y
-                  (+ members-height)
-                  (+ load-area-height))
-          js/window.innerHeight)
-      (+ below-viz-buffer)))
-
 #_
 (def event->pending-invitor-event
   (memoize
@@ -177,7 +103,7 @@
 (defn ->next-creation-time [prev-creation-time]
   (let [next-creation-time-candidate
         (-> prev-creation-time
-            (+ evt-view-offset)
+            (+ evt-offset)
             ;; add small random offset, to ensure creation-time is distinct
             ;; would be enough to give [0; members-count]
             (+ (rand-int (* (count hg-members/names) 2))) ;; * 2 to give more leeway

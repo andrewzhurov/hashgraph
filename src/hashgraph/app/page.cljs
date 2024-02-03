@@ -7,22 +7,8 @@
    [goog.string :refer [format]]
    [hashgraph.app.state :as hga-state]
    [hashgraph.app.utils :refer [->below-view? ->above-view?] :as hga-utils]
-   [hashgraph.app.events :refer [evt-view-r
-                                 evt-view-s
-                                 wit-view-r
-                                 vote-view-r
-                                 vote-view-circumferance
-                                 hgs-padding
-                                 sp-padding
-                                 idx-view-position-x
-                                 evt-view-position-x
-                                 t->view-position-y
-                                 evt-view-position-y
-                                 evt-view-position
-                                 wit-view-r
-                                 vote-view-circumferance
-                                 vote-view-stroke-width]
-    :as hga-events]
+   [hashgraph.app.events :as hga-events]
+   [hashgraph.app.view :as hga-view]
    [hashgraph.app.playback :as hga-playback]
    [hashgraph.app.transitions :as hga-transitions]
    [hashgraph.app.infini-events :as hga-infini-events]
@@ -65,10 +51,20 @@
                  [:to {:transform "scale(1)"}])
 
    [:html {:height "100%" :overflow-y :hidden}]
-   [:body {:height "100%" :overflow-y :hidden}]
+   [:body {:height "100%" :overflow-y :hidden :margin "0px"}]
    [:#root {:height "100%" :overflow-y :hidden}]
-   [:#view {:display :flex}]
-   [:#viz-wrapper {:height "100vh" :width "50vw" :overflow-y :scroll}]
+   [:#view {:display :flex}
+    [:&.vertical   {:flex-direction :column
+                    :overflow-x     :scroll}
+     [:#viz-wrapper {}]]
+    [:&.horizontal {:flex-direction :row
+                    :overflow-y     :scroll}
+     [:#viz-wrapper {}]]]
+
+   [:#home {:width  "100vw"
+            :height "100vh"}]
+   [:#viz-wrapper {:height "100vh"
+                   :width "100vw"}]
    [:#viz {:width "100%"
            :transition "height 0.5s"}
     [:.inspectable {:transform-box :fill-box
@@ -141,33 +137,6 @@
                                          :opacity opacity}))
                       state))})
 
-
-(rum/defcs event-refs-view <
-  key-fn-by-hash
-  static-by-hash
-  (with-event-view-state ::view-state (fn [event] event))
-  (with-event-view-state ::sp-view-state (fn [event] (:event/self-parent event)))
-  (with-event-view-state ::op-view-state (fn [event] (:event/other-parent event)))
-  [{::keys [view-state sp-view-state op-view-state]} event]
-  [:g.refs
-   (when sp-view-state
-     [:line {:opacity (:opacity view-state)
-             :x1      (:x view-state)
-             :y1      (:y view-state)
-             :x2      (:x sp-view-state)
-             :y2      (:y sp-view-state)
-             :style   {:stroke       :lightgray
-                       :stroke-width "2px"}}])
-
-   (when op-view-state
-     [:line {:opacity (:opacity view-state)
-             :x1      (:x view-state)
-             :y1      (:y view-state)
-             :x2      (:x op-view-state)
-             :y2      (:y op-view-state)
-             :style   {:stroke       :lightgray
-                       :stroke-width "2px"}}])])
-
 (def vote-circumferance-start+for+end
   (memoize
    (fn [member-name stake-map]
@@ -180,16 +149,16 @@
              [_ _ prev-voter-end-vote-circumferance] (vote-circumferance-start+for+end prev-voter-name stake-map)
              start-vote-circumferance                prev-voter-end-vote-circumferance
              stake                                   (get stake-map member-name)
-             vote-circumferance                      (-> vote-view-circumferance
+             vote-circumferance                      (-> vote-circumferance
                                                          (/ hg/total-stake)
                                                          (* stake))
              end-vote-circumferance                  (+ start-vote-circumferance vote-circumferance)]
          [start-vote-circumferance vote-circumferance end-vote-circumferance])))))
 
-(def received-event-y-offset (/ evt-view-s 3))
+(def received-event-y-offset (/ hga-view/evt-s 3))
 (def received-events-width-count (count hg-members/names))
-(def received-events-width (-> received-events-width-count dec idx-view-position-x #_evt-view-s))
-(def received-events-area-x (idx-view-position-x (count hg-members/names)))
+(def received-events-width (-> received-events-width-count dec hga-view/idx->x #_evt-s))
+(def received-events-area-x (hga-view/idx->x (count hg-members/names)))
 
 (rum/defc received-event-view <
   rum/reactive
@@ -200,97 +169,97 @@
                 (if-not (hga-inspector/->peeked? received-event)
                   identity
                   utils/log!)]
-    (letl [{:received-event/keys [event idx middle-learned-events received-time concluded-round r-idx color]} received-event
+    (let [{:received-event/keys [event idx middle-learned-events received-time concluded-round r-idx color]} received-event
 
-           ;; received-y (t->view-position-y received-time)
-           ;; received-x (-> (idx-view-position-x (count hg-members/names))
-           ;;                (+ (* r-idx hga-events/evt-view-s)))
+          ;; received-y (t->y received-time)
+          ;; received-x (-> (idx->x (count hg-members/names))
+          ;;                (+ (* r-idx hga-view/evt-s)))
 
-           from-y           (or (some-> concluded-round :concluded-round/prev-concluded-round :concluded-round/ufws (some->> (map :event/creation-time)) hg/median t->view-position-y)
-                                0)
-           to-y             (-> concluded-round :concluded-round/ufws (->> (map :event/creation-time)) hg/median t->view-position-y (- evt-view-s))
-           cr-size          (-> concluded-round :concluded-round/es-r count)
-           size-y           (- to-y from-y)
-           fitting-evts-size (/ size-y evt-view-s)
-           evt-y-offset     (* (/ fitting-evts-size
-                                  cr-size)
-                               evt-view-s)
+          from-y            (or (some-> concluded-round :concluded-round/prev-concluded-round :concluded-round/ufws (some->> (map :event/creation-time)) hg/median hga-view/t->y)
+                               0)
+          to-y              (-> concluded-round :concluded-round/ufws (->> (map :event/creation-time)) hg/median hga-view/t->y (- hga-view/evt-s))
+          cr-size           (-> concluded-round :concluded-round/es-r count)
+          size-y            (- to-y from-y)
+          fitting-evts-size (/ size-y hga-view/evt-s)
+          evt-y-offset      (* (/ fitting-evts-size
+                                 cr-size)
+                              hga-view/evt-s)
 
-           lapses           (ceil (/ cr-size
-                                     (* received-events-width-count 2)))
-           lapse-size       (/ cr-size lapses)
-           lapse-idx        (quot r-idx lapse-size)
-           lapse-height     (/ size-y lapses)
-           lapse-y          (+ (* (/ size-y lapses) lapse-idx) from-y)
-           within-lapse-idx (mod r-idx lapse-size)
-           within-half-lapse-idx (mod within-lapse-idx (/ lapse-size 2))
-           within-lapse-pos (/ within-lapse-idx (dec lapse-size))
-           within-half-lapse-pos (mod within-lapse-pos (/ (dec lapse-size) 2))
-           within-lapse-before-middle? (< within-lapse-pos 0.5)
-           within-lapse-y-mod (hga-timing/sharp-in-sharp-out within-half-lapse-pos)
-           within-lapse-y     (* within-lapse-y-mod lapse-height)
-           ;; within-lapse-y-modded (cond-> within-lapse-y
-           ;;                         within-lapse-before-middle?       ((fn [in]
-           ;;                                                              (l in)
-           ;;                                                              (l within-lapse-y-mod)
-           ;;                                                              (l (/ in within-lapse-y-mod))
-           ;;                                                              (if (= within-lapse-y-mod 0)
-           ;;                                                                in
-           ;;                                                                (* in within-lapse-y-mod))))
-           ;;                         (not within-lapse-before-middle?) (* within-lapse-y-mod)
-           ;;                         )
+          lapses                      (ceil (/ cr-size
+                                    (* received-events-width-count 2)))
+          lapse-size                  (/ cr-size lapses)
+          lapse-idx                   (quot r-idx lapse-size)
+          lapse-height                (/ size-y lapses)
+          lapse-y                     (+ (* (/ size-y lapses) lapse-idx) from-y)
+          within-lapse-idx            (mod r-idx lapse-size)
+          within-half-lapse-idx       (mod within-lapse-idx (/ lapse-size 2))
+          within-lapse-pos            (/ within-lapse-idx (dec lapse-size))
+          within-half-lapse-pos       (mod within-lapse-pos (/ (dec lapse-size) 2))
+          within-lapse-before-middle? (< within-lapse-pos 0.5)
+          within-lapse-y-mod          (hga-timing/sharp-in-sharp-out within-half-lapse-pos)
+          within-lapse-y              (* within-lapse-y-mod lapse-height)
+          ;; within-lapse-y-modded (cond-> within-lapse-y
+          ;;                         within-lapse-before-middle?       ((fn [in]
+          ;;                                                              (l in)
+          ;;                                                              (l within-lapse-y-mod)
+          ;;                                                              (l (/ in within-lapse-y-mod))
+          ;;                                                              (if (= within-lapse-y-mod 0)
+          ;;                                                                in
+          ;;                                                                (* in within-lapse-y-mod))))
+          ;;                         (not within-lapse-before-middle?) (* within-lapse-y-mod)
+          ;;                         )
 
-           received-y (-> within-lapse-y #_(* r-idx evt-y-offset)
-                          (+ lapse-y #_from-y))
+          received-y (-> within-lapse-y #_(* r-idx evt-y-offset)
+                         (+ lapse-y #_from-y))
 
-           evt-x-offset (-> (l received-events-width)
-                            (/ (dec lapse-size)) ;; account for first not getting offset (?)
-                            (* 2))
-           received-x
-           (->
-            (if (> within-lapse-pos 0.5)
-              (-> (- received-events-width (* (- within-lapse-idx (/ lapse-size 2))
-                                              evt-x-offset)))
-              (* within-lapse-idx
-                 evt-x-offset))
-            (+ received-events-area-x))
-           #_
-           (-> (if (odd? (quot idx received-events-width-count))
-                 (- received-events-width (* (mod idx received-events-width-count) evt-view-s))
-                 (* (mod idx received-events-width-count) evt-view-s))
-               (+ received-events-area-x))
-           ]
-          [:g
+          evt-x-offset (-> (l received-events-width)
+                           (/ (dec lapse-size)) ;; account for first not getting offset (?)
+                           (* 2))
+          received-x
+          (->
+           (if (> within-lapse-pos 0.5)
+             (-> (- received-events-width (* (- within-lapse-idx (/ lapse-size 2))
+                                             evt-x-offset)))
+             (* within-lapse-idx
+                evt-x-offset))
+           (+ received-events-area-x))
+          #_
+          (-> (if (odd? (quot idx received-events-width-count))
+                (- received-events-width (* (mod idx received-events-width-count) evt-s))
+                (* (mod idx received-events-width-count) evt-s))
+              (+ received-events-area-x))
+          ]
+      [:g
 
-           #_
-           (let [parent-evt (:received-event/event (:received-event/prev-received-event received-event))
-                 [r-x r-y]  (evt-view-position evt)
-                 [p-x p-y]  (evt-view-position parent-evt)]
-             [:line
-              {:x1           r-x
-               :y1           r-y
-               :x2           p-x
-               :y2           p-y
-               :stroke       (:received-event/color received-event)
-               :stroke-width "2px"}])
+       #_
+       (let [parent-evt (:received-event/event (:received-event/prev-received-event received-event))
+             [r-x r-y]  (evt->x+y evt)
+             [p-x p-y]  (evt->x+y parent-evt)]
+         [:line
+          {:x1           r-x
+           :y1           r-y
+           :x2           p-x
+           :y2           p-y
+           :stroke       (:received-event/color received-event)
+           :stroke-width "2px"}])
 
-           (when (hga-inspector/->in-peeked? received-event)
-             (for [mle middle-learned-events]
-               [:line {:x1           (evt-view-position-x mle)
-                       :y1           (evt-view-position-y mle)
-                       :x2           received-x
-                       :y2           received-y
-                       :stroke       "blue"
-                       :stroke-width "2px"}]))
+       (when (hga-inspector/->in-peeked? received-event)
+         (for [mle middle-learned-events]
+           [:line {:x1           (hga-view/evt->x mle)
+                   :y1           (hga-view/evt->y mle)
+                   :x2           received-x
+                   :y2           received-y
+                   :stroke       "blue"
+                   :stroke-width "2px"}]))
 
-           [:g.receivend-event-view (inspectable received-event)
-            [:circle.event
-             {:r            evt-view-r
-              :cx           received-x
-              :cy           received-y
-              :stroke       color
-              :stroke-width 1
-              :fill         color}]]])))
+       [:g.receivend-event-view (inspectable received-event)
+        [:circle.event
+         {:r            hga-view/evt-r
+          :cx           received-x
+          :cy           received-y
+          :stroke       color
+          :stroke-width 1
+          :fill         color}]]])))
 
 (def event-view-key-fn {:key-fn (fn [{:event-info/keys [event]}] (-hash event))})
 
@@ -331,13 +300,13 @@
                 {:class  [(when r-final? "r-final")
                           (when r-concluded? "r-concluded")
                           (when share-stake? "tx-share-stake")]
-                 :width  (* wit-view-r 2)
-                 :height (* wit-view-r 2)}
+                 :width  (* hga-view/wit-r 2)
+                 :height (* hga-view/wit-r 2)}
                 (inspectable event))
 
       (when witness?
         [:circle.witness
-         {:r            wit-view-r
+         {:r            hga-view/wit-r
           :cx           x
           :cy           y
           :stroke       :black
@@ -350,13 +319,13 @@
            [:g.stake {:key stake-holder}
             (let [member                                                                (-> stake-holder hg-members/member-name->person)
                   [start-vote-circumferance vote-circumferance _end-vote-circumferance] (vote-circumferance-start+for+end stake-holder stake-map)]
-              [:circle {:r                vote-view-r
+              [:circle {:r                hga-view/vote-r
                         :cx               x
                         :cy               y
                         :fill             :transparent
                         :stroke           (color-rgba-str (:member/color-rgb member) 1)
-                        :stroke-width     vote-view-stroke-width
-                        :stroke-dasharray (str "0 " start-vote-circumferance " " vote-circumferance " " vote-view-circumferance)}])])])
+                        :stroke-width     hga-view/vote-stroke-width
+                        :stroke-dasharray (str "0 " start-vote-circumferance " " vote-circumferance " " vote-circumferance)}])])])
 
       (when votes
         [:g.votes
@@ -366,18 +335,18 @@
                  [start-vote-circumferance vote-circumferance _end-vote-circumferance] (vote-circumferance-start+for+end member-name (:vote/stake-map vote))]
              (assert stake-map (:vote/stake-map vote))
              [:g.vote (merge {:key member-name} (inspectable vote))
-              [:circle {:r                vote-view-r
+              [:circle {:r                hga-view/vote-r
                         :cx               x
                         :cy               y
                         :fill             :transparent
                         :stroke           (if value
                                             (color-rgba-str (:member/color-rgb member) 1)
                                             "cyan")
-                        :stroke-width     vote-view-stroke-width
-                        :stroke-dasharray (str "0 " start-vote-circumferance " " vote-circumferance " " vote-view-circumferance)}]]))])
+                        :stroke-width     hga-view/vote-stroke-width
+                        :stroke-dasharray (str "0 " start-vote-circumferance " " vote-circumferance " " vote-circumferance)}]]))])
 
       [:circle.event
-       {:r            evt-view-r
+       {:r            hga-view/evt-r
         :cx           x
         :cy           y
         :stroke       color
@@ -385,38 +354,20 @@
         :fill         fill}]
 
       (when share-stake?
-        (hga-icons/transfer {:width  evt-view-s
-                             :height evt-view-s
-                             :x      (- x evt-view-r)
-                             :y      (- y evt-view-r)
+        (hga-icons/transfer {:width  hga-view/evt-s
+                             :height hga-view/evt-s
+                             :x      (- x hga-view/evt-r)
+                             :y      (- y hga-view/evt-r)
                              :fill   (if received-event "white" "black")}))
 
       [:text.round
-       {:x (+ x (/ wit-view-r 2))
-        :y (+ y (/ (- wit-view-r) 2))}
+       {:x (+ x (/ hga-view/wit-r 2))
+        :y (+ y (/ (- hga-view/wit-r) 2))}
        r]]
 
      #_
      (when received-event
        (received-event-view received-event))]))
-
-
-#_(def *rendered-evts
-  (rum/derived-atom [hga-playback/*played-c->hg hga-state/*viz-scroll-top] ::*rendered-evts
-    (fn [creator->hg scroll-top]
-      (->> creator->hg
-           vals
-           ;; TODO switch to transducers
-           (mapcat (fn [hg] (->> hg
-                                 (iterate hg/self-parent)
-                                 (take-while some?)
-                                 ;; this only needed for refs viz, perhaps viz refs always instead
-                                 ;; actually, when rewinding playback these events will fold onto oher-parents
-                                 #_(drop-while (fn [evt] (and (when-let [sp-evt (hg/self-parent evt)]  ;; more costly as deeper in history you get
-                                                                (->above-view? (evt-view-position-y sp-evt) scroll-top))
-                                                              (when-let [op-evt (hg/other-parent evt)]
-                                                                (->above-view? (evt-view-position-y op-evt) scroll-top)))))
-                                 (take-while (fn [evt] (not (->below-view? (evt-view-position-y evt) scroll-top)))))))))))
 
 (defn* ^:memoizing ?received-event->event->received-event
   [?received-event]
@@ -528,7 +479,7 @@
 (rum/defc viz < rum/reactive
   []
   (let [[played-evt-infos> rewinded-evt-infos>] (rum/react *rendered-evt-infos)]
-    [:svg#viz {:height (hga-events/->viz-height (-> played-evt-infos> first :event-info/event))}
+    [:svg#viz {:height (hga-view/evt->viz-height (-> played-evt-infos> first :event-info/event))}
      [:g.events-view
       (for [evt-info played-evt-infos>]
         (event-view evt-info))
@@ -538,7 +489,7 @@
 (def members-style
   [[:.members {:position         :absolute
                :bottom           "0px"
-               :height           (str hga-events/members-height "px")
+               :height           (str hga-view/members-size "px")
                :background-color "rgba(255,255,255,0.5)"}
     [:.member {:position       :absolute
                :transform      "translateX(-50%)"
@@ -563,7 +514,7 @@
               active? (contains? stake-map member-name)
               stake-pos (/ (get stake-map member-name) hg/total-stake)]
           [:div.member {:class (when active? "active")
-                        :style {:left  (idx-view-position-x (:member/idx member))}}
+                        :style {:left  (hga-view/idx->x (:member/idx member))}}
            (case (:member/gender member)
              :male   (hga-avatars/male-avatar   (color-rgba-str (:member/color-rgb member) 1) (color-rgba-str (:member/color-rgb member) stake-pos))
              :female (hga-avatars/female-avatar (color-rgba-str (:member/color-rgb member) 1) (color-rgba-str (:member/color-rgb member) stake-pos))
@@ -572,9 +523,27 @@
                                                "lightgray" "black")}}
             member-name]]))]]))
 
-(rum/defc viz-wrapper
-  <
-  rum/reactive
+(rum/defc viz-section-view
+  []
+  [:div#viz-section {:style {:position :relative}}
+
+   (inspector-view)
+
+   (viz)
+
+   (members-view)])
+
+(rum/defc controls-view < rum/reactive []
+  [:div#controls
+   [:button {:on-click #(swap! hga-state/*playback-attached-to-scroll? not)}
+    (str (if (rum/react hga-state/*playback-attached-to-scroll?) "detach" "attach") " playback to scroll")]
+   (hga-playback/playback-controls-view)])
+
+(rum/defc home-view []
+  [:div#home
+   ])
+
+(rum/defc page-view <
   {:did-mount
    (fn [state]
      (let [dom-node (rum/dom-node state)]
@@ -586,9 +555,9 @@
        (reset! hga-state/*scroll! (fn [px & {:keys [smooth?]}]
                                     #_(set! (.-scrollTop dom-node) px)
                                     (.scroll dom-node (if smooth?
-                                                             (js-obj "top" px
-                                                                     "behavior" "smooth")
-                                                             (js-obj "top" px))) ;; doesn't scroll pixel-perfect on zoom
+                                                        (js-obj "top" px
+                                                                "behavior" "smooth")
+                                                        (js-obj "top" px))) ;; doesn't scroll pixel-perfect on zoom
                                     ))
        (.addEventListener dom-node "scroll"
                           ;; V may cause stale viz-scroll-top
@@ -597,29 +566,13 @@
                                                 ))))
      state)}
   []
-  [:div#viz-wrapper
-   (viz)])
-
-(rum/defc viz-section-controls-view < rum/reactive
-  []
-  [:div {:style {:position :absolute
-                  :top "0px"}}
-   [:button {:on-click #(swap! hga-state/*playback-attached-to-scroll? not)}
-    (str (if (rum/react hga-state/*playback-attached-to-scroll?) "detach" "attach") " playback to scroll")]
-   (hga-playback/playback-controls-view)])
-
-(rum/defc viz-section-view
-  []
-  [:div {:style {:position :relative}}
-   (viz-section-controls-view)
-
-   (viz-wrapper)
-
-   (members-view)])
+  [:div#page-view
+   #_(hga-analysis/graph-view)
+   (controls-view)
+   (home-view)
+   (viz-section-view)])
 
 (rum/defc view []
-  [:div#view
+  [:div#root-view
    [:style (css styles)]
-   #_(hga-analysis/graph-view)
-   (inspector-view)
-   (viz-section-view)])
+   (page-view)])
