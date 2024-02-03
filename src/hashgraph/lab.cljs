@@ -676,3 +676,16 @@ identical?
   (time (into s1> s2<))
   (time (concat (reverse s2<) s1>)))
 ;; into's faster
+
+
+;; what's the fastest way to lookup if key's in js-obj?
+#_
+(let [n 50000
+      r (range 0 n)
+      obj (apply js-obj (interleave r r))
+      nth (rand-nth r)]
+  (time (boolean (goog.object/get obj nth))) ;; almost always instant
+  (time (goog.object/contains obj nth))      ;; many times slower
+  (time (goog.object/containsKey obj nth)))  ;; almost instant
+;; contains many times slower
+;; get is fastest, a bit faster than containsKey
