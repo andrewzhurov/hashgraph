@@ -6,12 +6,13 @@
             [hashgraph.members :as hg-members]
             [hashgraph.app.state :as hga-state]
             [hashgraph.app.events :as hga-events]
+            [hashgraph.app.transitions :as hga-transitions]
             [hashgraph.app.utils :refer [->below-view? ->above-view?] :as hga-utils]
             [hashgraph.app.inspector :refer [log!]]
             [hashgraph.utils :refer-macros [defn* log-relative l letl letp] :as utils]
             [taoensso.tufte :refer [profile p]]))
 
-(def tt 500) ;; transition time ms
+
 ;; Playback state is kept explicitly rather than being a derived view,
 ;; this is to get a performance gain, sacrificing simplicity.
 (defonce *left< (atom (list {:event/creator       hg/main-creator
@@ -36,11 +37,6 @@
                           :rewinded< '() ;; on play we'll read from the first when putting to played ^
                           }))
 #_(log! :playback @*playback)
-;; These states are used to trigger view transitions.
-;; *just-played< events transition from other-parent (as though they are being sent over the wire).
-;; *just-rewinded> events transition from their current position back to other-parent (as though time's rewinded)
-(defonce *just-played<   (atom '()))
-(defonce *just-rewinded> (atom '()))
 
 (defonce *played<   (rum/cursor *playback :played<))
 (defonce *rewinded> (rum/cursor *playback :rewinded>))
@@ -73,7 +69,7 @@
                            new-just-played<                  to-play-rewinded<
                            new-played<                       (concat new-played< to-play-rewinded<)]
                        (if (not (empty? new-rewinded<))
-                         (do (reset! *just-played< new-just-played<)
+                         (do (reset! hga-transitions/*just-played< new-just-played<)
                              (reset! *playback
                                      {:behind>   new-behind>
                                       :played<   new-played<
@@ -82,7 +78,7 @@
                                [to-play-left< new-left<] (->> left< (split-with #(not (hga-utils/->above-playback-view? (hga-events/evt-view-position-y %) new-scroll-top))))
                                new-played<               (concat new-played< to-play-left<)
                                new-just-played<          (concat new-just-played< to-play-left<)]
-                           (reset! *just-played< new-just-played<) ;; fire first, so transitions are ready, brittle :/
+                           (reset! hga-transitions/*just-played< new-just-played<) ;; fire first, so transitions are ready, brittle :/
                            (reset! *playback
                                    {:behind>   new-behind>
                                     :played<   new-played<
@@ -99,7 +95,7 @@
                              [new-rewinded< to-left<] (split-at 5 new-rewinded<) ;; cap rewinded, no point in rendering a ton of them, just the latest few
                              new-played<              (reverse new-played>)
                              ]
-                         (reset! *just-rewinded> new-just-rewinded>)
+                         (reset! hga-transitions/*just-rewinded> new-just-rewinded>)
                          (reset! *playback
                                  {:behind>   new-behind>
                                   :played<   new-played<
@@ -257,7 +253,7 @@
   (when @*playing?
     (when-let [scroll-by! @hga-state/*scroll-by!]
       (scroll-by! (* hga-events/evt-view-offset)))
-    (js/setTimeout play! (/ tt 5))))
+    (js/setTimeout play! (/ hga-transitions/tt 5))))
 
 (add-watch *playing? ::run-play
            (fn [_ _ old new]
