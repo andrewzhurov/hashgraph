@@ -54,6 +54,9 @@
 (defn ->left-desired? []
   (not (goog.object/isEmpty event-hash->prop->t)))
 
+(defn ->in-transition? [evt]
+  (boolean (goog.object/get event-hash->prop->t (-hash evt))))
+
 (defn ->current [event-hash]
   (or (goog.object/get event-hash->current-view-state event-hash)
       (let [current (js-obj)]

@@ -91,8 +91,8 @@
                              new-played>              (concat played> to-play>)
                              [to-rewind> new-played>] (->> new-played> (split-with #(hga-utils/->above-playback-view? (hga-events/evt-view-position-y %) new-scroll-top)))
                              new-just-rewinded>       to-rewind>
-                             new-rewinded<            (into rewinded< to-rewind>)
-                             [new-rewinded< to-left<] (split-at 5 new-rewinded<) ;; cap rewinded, no point in rendering a ton of them, just the latest few
+                             [new-rewinded< to-left<] (->> rewinded< (split-with hga-transitions/->in-transition?))
+                             new-rewinded<            (into new-rewinded< to-rewind>)
                              new-played<              (reverse new-played>)
                              ]
                          (reset! hga-transitions/*just-rewinded> new-just-rewinded>)
