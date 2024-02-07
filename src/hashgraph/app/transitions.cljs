@@ -24,24 +24,24 @@
 (defonce *just-rewinded> (atom '()))
 (defonce *last-concluded-round (atom nil))
 
-(defonce event-hash->current-view-state (js-map))
-(defonce event-hash->prop->t (js-map)) ;; property -> transition
+(defonce view-id->current-view-state (js-map))
+(defonce view-id->prop->t (js-map)) ;; property -> transition
 (defonce *view-id->react-comps (atom {})) ;; subscriptions from react components to view-id changes
 
 #_
 (defn reset-view-states! []
-  (set! event-hash->current-view-state (js-map))
-  (set! event-hash->prop->t (js-map)))
-#_(l event-hash->current-view-state)
-#_(l event-hash->desired-view-state)
-#_(js/console.log event-hash->current-view-state)
-#_(js/console.log event-hash->prop->t)
+  (set! view-id->current-view-state (js-map))
+  (set! view-id->prop->t (js-map)))
+#_(l view-id->current-view-state)
+#_(l view-id->desired-view-state)
+#_(js/console.log view-id->current-view-state)
+#_(js/console.log view-id->prop->t)
 #_(defonce _make-obj-lookapable
   (set! (.. js/Object -prototype -call) (fn [_ k] (println k) (this-as this (goog.object/get this k)))))
 
 #_
 (defn ->left-desired? []
-  (not (js-map/empty? event-hash->prop->t)))
+  (not (js-map/empty? view-id->prop->t)))
 
 (defn subscribe-to-view-state-change [view-id react-comp]
   (swap! *view-id->react-comps update view-id utils/conjs react-comp))
@@ -57,21 +57,21 @@
 
 
 (defn view-id->in-transition? [view-id]
-  (js-map/contains? event-hash->prop->t view-id))
+  (js-map/contains? view-id->prop->t view-id))
 
 (defn evt->in-transition? [evt]
   (view-id->in-transition? (-hash evt)))
 
-(defn ->current [event-hash]
-  (or (js-map/get event-hash->current-view-state event-hash)
+(defn ->current [view-id]
+  (or (js-map/get view-id->current-view-state view-id)
       (let [current (js-map)]
-        (js-map/assoc! event-hash->current-view-state event-hash current)
+        (js-map/assoc! view-id->current-view-state view-id current)
         current)))
 
-(defn ->prop->t [event-hash]
-  (or (js-map/get event-hash->prop->t event-hash)
+(defn ->prop->t [view-id]
+  (or (js-map/get view-id->prop->t view-id)
       (let [prop->t (js-map)]
-        (js-map/assoc! event-hash->prop->t event-hash prop->t)
+        (js-map/assoc! view-id->prop->t view-id prop->t)
         prop->t)))
 
 (defn make-t [val-from val-to time-start]
@@ -234,9 +234,9 @@
                                        (assoc :to (cljs.core/system-time)))))
   (let [t-time-now (cljs.core/system-time)]
     (.forEach
-     event-hash->prop->t
-     (fn [prop->t event-hash _js-map]
-       (let [current (->current event-hash)]
+     view-id->prop->t
+     (fn [prop->t view-id _js-map]
+       (let [current (->current view-id)]
          (.forEach
           prop->t
           (fn [t prop _js-map]
@@ -256,12 +256,12 @@
                       t-val-delta   (- t-val-to t-val-from)
                       t-val-current (+ t-val-from (* t-val-delta t-mod))]
                   (js-map/assoc! current prop t-val-current)
-                  (notify-on-view-state-change event-hash)
+                  (notify-on-view-state-change view-id)
 
                   (when (= 1 t-time-pos)
                     (js-map/dissoc! prop->t prop)))))))
          (when (js-map/empty? prop->t)
-           (js-map/dissoc! event-hash->prop->t event-hash)))))))
+           (js-map/dissoc! view-id->prop->t view-id)))))))
 
 (defn run-each-frame! []
   (current->desired-run!)
