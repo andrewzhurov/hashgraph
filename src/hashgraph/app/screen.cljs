@@ -12,8 +12,10 @@
             [hashgraph.app.log :as hga-log]
             [hashgraph.app.inspector :as hga-inspector]
             [hashgraph.app.page :as page]
-            [hashgraph.utils :refer-macros [l]]
-            [hashgraph.utils-test]))
+            [hashgraph.utils.core :refer [log-flush!] :refer-macros [l]]
+            [hashgraph.utils-test]
+            [hashgraph.utils.js-map-test]
+            [clojure.test :refer [run-all-tests]]))
 
 
 #_#_
@@ -38,8 +40,8 @@
 (defn start []
   ;; start is called after code's been reloaded
   ;; this is configured in :after-load in the shadow-cljs.edn
-  (set! hashgraph.utils/log! hashgraph.app.inspector/log!)
-  (hashgraph.utils-test/test)
+  (run-all-tests #"hashgraph\..*")
+
   (when-let [node (.getElementById js/document "root")]
     (rum/mount (page/view) node))
   (js/console.log "started"))
@@ -47,6 +49,7 @@
 (defn stop []
   ;; stop is called before any code is reloaded
   ;; this is configured in :before load in the shadow-cljs.edn
+  (log-flush!)
   (js/console.log "stopped"))
 
 (defn ^:export init []
@@ -60,7 +63,6 @@
       ;; :repl-connect-string "/js/repl.js"
       :core-connect-string "/js/core.js"
       }))
-  (set! hashgraph.utils/log! hashgraph.app.inspector/log!)
   (hga-log/init)
   (tufte/add-basic-println-handler!
    {}

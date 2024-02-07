@@ -4,8 +4,9 @@
    [clojure.set :as set]
    [rum.core :as rum]
    [hashgraph.main :as hg]
+   [hashgraph.app.view :as hga-view]
    [hashgraph.members :as hg-members]
-   [hashgraph.utils :refer [log!] :refer-macros [l defn*] :as utils]
+   [hashgraph.utils.core :refer [log!] :refer-macros [l defn*] :as utils]
    [taoensso.timbre :refer-macros [spy]]
    [taoensso.tufte :as tufte :refer [defnp p profiled profile]]))
 #_
@@ -90,11 +91,6 @@
                     (->> (sort-by :event/creation-time >)))]
     events>))
 
-(defn ->last-creation-time [events]
-  (:event/creation-time (last events)))
-(defn ->new-creation-time [events]
-  (+ (->last-creation-time events) (rand-nth [20 30 40])))
-
 ;; Due to scroll being the playback position,
 ;; in order to be able to play to a particular event,
 ;; we need to make sure that events have distinct creation times (as int, because scroll position is an int).
@@ -103,7 +99,7 @@
 (defn ->next-creation-time [prev-creation-time]
   (let [next-creation-time-candidate
         (-> prev-creation-time
-            (+ evt-offset)
+            (+ hga-view/evt-offset)
             ;; add small random offset, to ensure creation-time is distinct
             ;; would be enough to give [0; members-count]
             (+ (rand-int (* (count hg-members/names) 2))) ;; * 2 to give more leeway

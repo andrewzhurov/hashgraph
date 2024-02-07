@@ -32,11 +32,11 @@
 
  :hooks {:analyze-call {rum.core/defc hooks.rum/defc
                         rum.core/defcs hooks.rum/defcs
-                        hashgraph.utils/defnm hooks.hashgraph/defnm
+                        hashgraph.utils.core/defnm hooks.hashgraph/defnm
                         clojure.string/join hooks.path-invalid-construct/string-join
                         clojure.string/replace hooks.regex-checks/double-escaped-regex}}
- :lint-as {;; hashgraph.utils/defnm clojure.core/defn
-           hashgraph.utils/letl clojure.core/let
+ :lint-as {;; hashgraph.utils.core/defnm clojure.core/defn
+           hashgraph.utils.core/letl clojure.core/let
            promesa.core/let clojure.core/let
            promesa.core/loop clojure.core/loop
            promesa.core/recur clojure.core/recur

@@ -1,7 +1,8 @@
 (ns hashgraph.app.avatars
-  (:require [hashgraph.utils :refer-macros [l]]))
+  (:require [hashgraph.utils.core :refer-macros [l]]
+            [hashgraph.app.view :as hga-view]))
 
-(def avatar-size 40)
+
 
 (def male-haircuts
   [[:path
@@ -24,8 +25,8 @@
         "#2d2d2d"
         ]
     [:svg
-     {:width     avatar-size,
-      :height    avatar-size,
+     {:width     hga-view/avatar-size,
+      :height    hga-view/avatar-size,
       :viewBox   "0 0 256 256",
       :data-name "Layer 1",
       :id        "Layer_1",
@@ -101,8 +102,8 @@
   (let [wallpaper-color background-color #_"white" ;; #84d0f7
         sweater-color color]
     [:svg
-     {:width     avatar-size,
-      :height    avatar-size,
+     {:width     hga-view/avatar-size,
+      :height    hga-view/avatar-size,
       :viewBox   "0 0 256 256",
       :data-name "Layer 1",
       :id        "Layer_1",

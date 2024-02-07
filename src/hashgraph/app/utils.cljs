@@ -1,26 +1,48 @@
 (ns hashgraph.app.utils
   (:require
+   [rum.core :as rum]
    [hashgraph.app.view :as hga-view]
-   [hashgraph.utils :refer [log!] :refer-macros [l letl] :as utils]))
+   [hashgraph.utils.core :refer [log!] :refer-macros [l letl] :as utils]))
 
-(defn ->view-bound-min [scroll-top]
-  scroll-top)
+(def render-always-mixin
+  {:after-render (fn [state] (rum/request-render (:rum/react-component state)) state)})
 
-(defn ->view-bound-max [scroll-top]
-  (+ scroll-top js/window.innerHeight))
+(rum/defcs plug < render-always-mixin
+  {:did-mount (fn [state] (assoc state ::dom-node (rum/dom-node state)))}
+  [{::keys [dom-node] :as state} plug-name]
+  [:div {:style {:position        :relative
+                 :width           "100%"
+                 :height          "100%"
+                 :border          "1px solid lightgray"
+                 :display         :flex
+                 :align-items     "center"
+                 :justify-content "center"
+                 :z-index         -1000}}
+   (when dom-node
+     (let [w (.-clientWidth dom-node)
+           h (.-clientHeight dom-node)]
+       [:svg {:width  w
+              :height h
+              :style  {:position :absolute
+                       :left     "0px"
+                       :right    "0px"}}
+        [:line {:x1           0
+                :y1           0
+                :x2           w
+                :y2           h
+                :stroke       "lightgray"
+                :stroke-width "1px"}]
+        [:line {:x1           0
+                :y1           h
+                :x2           w
+                :y2           0
+                :stroke       "lightgray"
+                :stroke-width "1px"}]]))
+   [:div {:style {:color "lightgray"}} plug-name]])
 
-(defn ->view-bounds [scroll-top]
-  (let [view-bound-min (->view-bound-min scroll-top)
-        view-bound-max (->view-bound-max scroll-top)]
-    [view-bound-min view-bound-max]))
 
-(defn ->above-view? [y scroll-top]
-  (> y (->view-bound-max scroll-top)))
+(defn on-next-frame! [callback]
+  (js/setTimeout #(js/requestAnimationFrame callback)))
 
-(defn ->below-view? [y scroll-top]
-  (< y (->view-bound-min scroll-top)))
-
-(defn ->above-playback-view? [y scroll-top]
-  (let [playback-view-bound-max (-> (->view-bound-max scroll-top)
-                                    (- hga-view/load-area-size hga-view/members-size))]
-    (> y playback-view-bound-max)))
+(defn on-animation-frame! [callback]
+  (js/requestAnimationFrame callback))

@@ -8,9 +8,9 @@
             [hashgraph.app.state :as hga-state]
             [hashgraph.app.events :as hga-events]
             [hashgraph.app.transitions :as hga-transitions]
-            [hashgraph.app.utils :refer [->below-view? ->above-view?] :as hga-utils]
-            [hashgraph.app.inspector :refer [log!]]
-            [hashgraph.utils :refer-macros [defn* log-relative l letl letp] :as utils]
+            [hashgraph.app.utils :as hga-utils]
+            [hashgraph.app.inspector]
+            [hashgraph.utils.core :refer-macros [defn* log-relative l letl letp] :as utils]
             [taoensso.tufte :refer [profile p]]))
 
 
@@ -54,19 +54,20 @@
 
 ;; As events viz is scrolled forward, more events get "created".
 ;; As events viz is scrolled backwards, time's rewinded.
-(def sync-playback-with-scroll
-  (add-watch hga-state/*viz-scroll-top ::sync-playback-with-scroll
-             (fn [_ _ old-scroll-top new-scroll-top]
-               (let [delta                               (- new-scroll-top old-scroll-top)
+
+(def sync-playback-with-viz-scroll
+  (add-watch hga-state/*viz-scroll ::sync-playback-with-scroll
+             (fn [_ _ old-viz-scroll new-viz-scroll]
+               (let [delta                               (- new-viz-scroll old-viz-scroll)
                      play-forward?                       (pos? delta)
                      {:keys [behind> played< rewinded<]} @*playback]
                  (if play-forward?
                    (do
                      #_(js/console.log "play")
                      ;; TODO switch to split-with*
-                     (let [[to-behind< new-played<]          (->> played< (split-with #(hga-utils/->below-view? (hga-view/evt->y %) new-scroll-top)))
+                     (let [[to-behind< new-played<]          (->> played< (split-with #(hga-view/->before-viz-viewbox? (hga-view/evt->y %) new-viz-scroll)))
                            new-behind>                       (into behind> to-behind<) ;; TODO perhaps try storing in separate atom
-                           [to-play-rewinded< new-rewinded<] (->> rewinded< (split-with #(not (hga-utils/->above-playback-view? (hga-view/evt->y %) new-scroll-top))))
+                           [to-play-rewinded< new-rewinded<] (->> rewinded< (split-with #(not (hga-view/->after-viz-playback-viewbox? (hga-view/evt->y %) new-viz-scroll))))
                            new-just-played<                  to-play-rewinded<
                            new-played<                       (concat new-played< to-play-rewinded<)]
                        (if (not (empty? new-rewinded<))
@@ -76,7 +77,7 @@
                                       :played<   new-played<
                                       :rewinded< new-rewinded<}))
                          (let [left<                     @*left<
-                               [to-play-left< new-left<] (->> left< (split-with #(not (hga-utils/->above-playback-view? (hga-view/evt->y %) new-scroll-top))))
+                               [to-play-left< new-left<] (->> left< (split-with #(not (hga-view/->after-viz-playback-viewbox? (hga-view/evt->y %) new-viz-scroll))))
                                new-played<               (concat new-played< to-play-left<)
                                new-just-played<          (concat new-just-played< to-play-left<)]
                            (reset! hga-transitions/*just-played< new-just-played<) ;; fire first, so transitions are ready, brittle :/
@@ -88,11 +89,11 @@
 
                    (do #_(js/console.log "rewind")
                        (let [played>                  (reverse played<)
-                             [to-play> new-behind>]   (->> behind>     (split-with #(not (hga-utils/->below-view? (hga-view/evt->y %) new-scroll-top))))
+                             [to-play> new-behind>]   (->> behind>     (split-with #(not (hga-view/->before-viz-viewbox? (hga-view/evt->y %) new-viz-scroll))))
                              new-played>              (concat played> to-play>)
-                             [to-rewind> new-played>] (->> new-played> (split-with #(hga-utils/->above-playback-view? (hga-view/evt->y %) new-scroll-top)))
+                             [to-rewind> new-played>] (->> new-played> (split-with #(hga-view/->after-viz-playback-viewbox? (hga-view/evt->y %) new-viz-scroll)))
                              new-just-rewinded>       to-rewind>
-                             [new-rewinded< to-left<] (->> rewinded< (split-with hga-transitions/->in-transition?))
+                             [new-rewinded< to-left<] (->> rewinded< (split-with hga-transitions/evt->in-transition?))
                              new-rewinded<            (into new-rewinded< to-rewind>)
                              new-played<              (reverse new-played>)
                              ]
@@ -231,29 +232,29 @@
                                                                      (reset! *left< playback-events<))))))))))))
 
 
-(defn scroll-to-event! [evt]
+(defn viz-scroll-to-event! [evt]
   (let [evt-pos        (hga-view/evt->y evt)
-        evt-scroll-pos (- evt-pos hga-view/playback-size)]
-    (@hga-state/*scroll! evt-scroll-pos :smooth? true)))
+        evt-viz-scroll-pos (- evt-pos hga-view/playback-size)]
+    (@hga-state/*viz-scroll! evt-viz-scroll-pos :smooth? true)))
 
 (defn play-backwards! []
   (if-let [prev-evt (second (reverse @*played<))]
-    (scroll-to-event! prev-evt)
-    (@hga-state/*scroll! 0 :smooth? true)))
+    (viz-scroll-to-event! prev-evt)
+    (@hga-state/*viz-scroll! 0 :smooth? true)))
 
 (defn play-forwards! []
   (if-let [rewinded-evt (first (not-empty (:rewinded< @*playback)))]
-    (scroll-to-event! rewinded-evt)
+    (viz-scroll-to-event! rewinded-evt)
     (if-let [left-event (first (not-empty @*left<))] ;; better ensure left's are populated
-      (scroll-to-event! left-event)
+      (viz-scroll-to-event! left-event)
       nil)))
 
 
 (def *playing? (atom false))
 (defn play! []
   (when @*playing?
-    (when-let [scroll-by! @hga-state/*scroll-by!]
-      (scroll-by! (* hga-view/evt-offset)))
+    (when-let [viz-scroll-by! @hga-state/*viz-scroll-by!]
+      (viz-scroll-by! (* hga-view/evt-offset)))
     (js/setTimeout play! (/ hga-transitions/tt 5))))
 
 (add-watch *playing? ::run-play
@@ -266,7 +267,7 @@
   (let [last-evt? (or (last (:rewinded< @*playback))
                       (last (:played< @*playback)))]
     (when last-evt?
-      (scroll-to-event! last-evt?))))
+      (viz-scroll-to-event! last-evt?))))
 
 #_
 (defn play! []
@@ -283,7 +284,7 @@
     :action      save-playback!}
    {:description "Set playback position to start"
     :short       "<--"
-    :action      #(@hga-state/*scroll! 0)
+    :action      #(@hga-state/*viz-scroll! 0)
     :shortcut    #{:ctrl :->}}
    {:description "Rewind playback once backwards"
     :short       "<-"

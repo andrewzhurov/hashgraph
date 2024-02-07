@@ -4,7 +4,7 @@
             [taoensso.timbre :refer-macros [spy]]
             [garden.color :refer [rgb rgb->hsl rotate-hue hsl->rgb]
              :as gc]
-            [hashgraph.utils :as utils]))
+            [hashgraph.utils.core :as utils]))
 
 (def male-names
   ["Arnold"

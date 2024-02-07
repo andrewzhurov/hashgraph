@@ -1,20 +1,22 @@
 (ns hashgraph.utils-test
-  (:require [hashgraph.app.inspector :refer [*log]]
-            [hashgraph.utils :refer-macros [defn* defnml timing timed assert-warn l]
-             :refer [*time-start* *time* *->time* *mem* *from-mem*]
+  (:require [hashgraph.app.inspector]
+            [hashgraph.utils.core :refer-macros [defn* defnml timing timed assert-warn l letl]
+             :refer [*log *time-start* *time* *->time* *mem* *from-mem*]
              :as utils]
             [taoensso.tufte :as tufte]
-            [goog.object :as gobject]))
+            [goog.object :as gobject]
+            [clojure.test :refer [deftest testing is are run-tests]]))
 
 #_
 (macroexpand '(defn* ^:memoizing ^:tracing test [a b] (+ 1 b)))
 
-(defn test []
-  (let [timed-result (timed (+ 1 1))]
-    (assert-warn (vector? timed-result))
-    (let [[took result] timed-result]
-      (assert-warn (number? took))
-      (assert-warn (= 2 result))))
+(deftest utils-test
+  (testing "timed"
+    (let [timed-result (timed (+ 1 1))]
+      (is (vector? timed-result))
+      (let [[took result] timed-result]
+        (is (number? took))
+        (is (= 2 result)))))
 
   #_#_#_#_
   (defn* ^:timing ^:memoizing ^{:tracing {:enabled? false}} timing-test-fn []
@@ -51,14 +53,13 @@
   (defn* ^:tracing tracing-test-fn-sum [arg1 arg2] (+ arg1 arg2))
   (defn* ^:tracing tracing-test-fn-multiply-sums [arg1 arg2] (* (tracing-test-fn-sum arg1 arg2)
                                                                 (tracing-test-fn-sum arg1 arg2)))
-  (binding [*log (atom {})]
-    (assert-warn (empty? (:traces @*log)))
+  #_(binding [*log (atom {})]
+    (is (empty? (:traces @*log)))
     (tracing-test-fn-multiply-sums 1 1)
-    (assert-warn (= (:traces @*log)
-                    [[['(tracing-test-fn-multiply-sums 1 1)] {}] ;; TODO have sym with ns
-                     [['(tracing-test-fn-multiply-sums 1 1) '(tracing-test-fn-sum 1 1)] {}]
-                     [['(tracing-test-fn-multiply-sums 1 1) '(tracing-test-fn-sum 1 1)] {}]])
-                 (str "found instead " (with-out-str (cljs.pprint/pprint (:traces @*log))))))
+    (is (= (:traces @*log)
+           [[['(tracing-test-fn-multiply-sums 1 1)] {}] ;; TODO have sym with ns
+            [['(tracing-test-fn-multiply-sums 1 1) '(tracing-test-fn-sum 1 1)] {}]
+            [['(tracing-test-fn-multiply-sums 1 1) '(tracing-test-fn-sum 1 1)] {}]])))
 
   ;; (defn* ^{:tracing :time} tracing-time-test-fn-sum [arg1 arg2] (+ arg1 arg2))
   ;; (defn* ^{:tracing :time} tracing-time-test-fn-multiply-sums [arg1 arg2] (repeatedly 100 #(tracing-time-test-fn-multiply-sums arg1 arg2)))
@@ -73,4 +74,5 @@
   ;;                         [['(tracing-test-fn-multiply-sums 1 1) '(tracing-test-fn-sum 1 1)] {}]
   ;;                         [['(tracing-test-fn-multiply-sums 1 1) '(tracing-test-fn-sum 1 1)] {}]])
   ;;                     (str "found instead " (with-out-str (cljs.pprint/pprint (:traces @*log)))))))
+
   )

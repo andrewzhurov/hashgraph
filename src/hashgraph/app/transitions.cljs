@@ -1,15 +1,18 @@
 (ns hashgraph.app.transitions
+  (:require-macros [hashgraph.utils.js-map :refer [js-map] :as js-map])
   (:require [rum.core :as rum]
             [goog.object]
             [cljs.core :as core]
             [hashgraph.main :as hg]
+            [hashgraph.members :as hg-members]
             [hashgraph.app.view :as hga-view]
             [hashgraph.app.timing :as hga-timing]
             [hashgraph.app.events :as hga-events]
-            [hashgraph.app.inspector :refer [log!]]
-            [hashgraph.utils :refer [safe-assoc! safe-assoc-in!
-                                     safe-update! safe-update-in!]
-             :refer-macros [l letl]
+            [hashgraph.app.inspector]
+            [hashgraph.utils.core :refer [log!
+                                          safe-assoc! safe-assoc-in!
+                                          safe-update! safe-update-in!]
+             :refer-macros [l log-relative letl defn*]
              :as utils]))
 
 (def tt 500) ;; transition time ms
@@ -19,59 +22,48 @@
 ;; *just-rewinded> events transition from their current position back to other-parent (as though time's rewinded)
 (defonce *just-played<   (atom '()))
 (defonce *just-rewinded> (atom '()))
+(defonce *last-concluded-round (atom nil))
 
-(defonce event-hash->current-view-state (js-obj))
-(defonce event-hash->prop->t (js-obj)) ;; property -> transition
+(defonce event-hash->current-view-state (js-map))
+(defonce event-hash->prop->t (js-map)) ;; property -> transition
 (defn reset-view-states! []
-  (set! event-hash->current-view-state (js-obj))
-  (set! event-hash->prop->t (js-obj)))
+  (set! event-hash->current-view-state (js-map))
+  (set! event-hash->prop->t (js-map)))
 #_(l event-hash->current-view-state)
 #_(l event-hash->desired-view-state)
+#_(js/console.log event-hash->current-view-state)
+#_(js/console.log event-hash->prop->t)
+#_(defonce _make-obj-lookapable
+  (set! (.. js/Object -prototype -call) (fn [_ k] (println k) (this-as this (goog.object/get this k)))))
 
-(def debug? true)
-(if debug?
-  (do (def t-time-start-key "t-time-start")
-      (def t-val-from-key "t-from")
-      (def t-val-to-key "t-to")
-
-      (def prop-val-key "prop-val")
-
-      (def opacity-key "opacity")
-      (def x-key "x")
-      (def y-key "y"))
-  (do (def t-time-start-key "0")
-      (def t-val-from-key "1")
-      (def t-val-to-key "2")
-
-      (def prop-val-key "0")
-
-      (def opacity-key "0")
-      (def x-key "1")
-      (def y-key "2")))
 ;; TODO check if there's performance gain from having enum keys
 
+#_
 (defn ->left-desired? []
-  (not (goog.object/isEmpty event-hash->prop->t)))
+  (not (js-map/empty? event-hash->prop->t)))
 
-(defn ->in-transition? [evt]
-  (boolean (goog.object/get event-hash->prop->t (-hash evt))))
+(defn view-id->in-transition? [view-id]
+  (js-map/contains? event-hash->prop->t view-id))
+
+(defn evt->in-transition? [evt]
+  (view-id->in-transition? (-hash evt)))
 
 (defn ->current [event-hash]
-  (or (goog.object/get event-hash->current-view-state event-hash)
-      (let [current (js-obj)]
-        (goog.object/set event-hash->current-view-state event-hash current)
+  (or (js-map/get event-hash->current-view-state event-hash)
+      (let [current (js-map)]
+        (js-map/assoc! event-hash->current-view-state event-hash current)
         current)))
 
 (defn ->prop->t [event-hash]
-  (or (goog.object/get event-hash->prop->t event-hash)
-      (let [prop->t (js-obj)]
-        (goog.object/set event-hash->prop->t event-hash prop->t)
+  (or (js-map/get event-hash->prop->t event-hash)
+      (let [prop->t (js-map)]
+        (js-map/assoc! event-hash->prop->t event-hash prop->t)
         prop->t)))
 
 (defn make-t [val-from val-to time-start]
-  (js-obj t-val-from-key val-from
-          t-val-to-key val-to
-          t-time-start-key time-start))
+  (js-map :transition/val-from val-from
+          :transition/val-to val-to
+          :transition/time-start time-start))
 
 (add-watch *just-played< ::transitions-on-playback
            (fn [_ _ _ just-played<]
@@ -86,14 +78,14 @@
                        current     (-> evt-hash ->current)
                        prop->t     (-> evt-hash ->prop->t)]
                    (if ?op-current
-                     (do (goog.object/set current x-key (goog.object/get ?op-current x-key))
-                         (goog.object/set current y-key (goog.object/get ?op-current y-key))
-                         (goog.object/set prop->t x-key (make-t ?op-current to-x tt-start))
-                         (goog.object/set prop->t y-key (make-t ?op-current to-y tt-start)))
-                     (do (goog.object/set current x-key to-x)
-                         (goog.object/set current y-key to-y)))
+                     (do (js-map/assoc! current :x (js-map/get ?op-current :x))
+                         (js-map/assoc! current :y (js-map/get ?op-current :y))
+                         (js-map/assoc! prop->t :x (make-t ?op-current to-x tt-start))
+                         (js-map/assoc! prop->t :y (make-t ?op-current to-y tt-start)))
+                     (do (js-map/assoc! current :x to-x)
+                         (js-map/assoc! current :y to-y)))
 
-                   (goog.object/set prop->t opacity-key (make-t 0 1 tt-start)))))))
+                   (js-map/assoc! prop->t :opacity (make-t 0 1 tt-start)))))))
 
 (add-watch *just-rewinded> ::transitions-on-playback
            (fn [_ _ _ just-rewinded>]
@@ -104,15 +96,141 @@
                        ?op          (-> evt :event/other-parent)
                        ?op-current  (some-> ?op (-hash) ->current)
                        current      (-> evt-hash ->current)
-                       from-x       (goog.object/get current x-key)
-                       from-y       (goog.object/get current y-key)
-                       from-opacity (goog.object/get current opacity-key)
+                       from-x       (js-map/get current :x)
+                       from-y       (js-map/get current :y)
+                       from-opacity (js-map/get current :opacity)
                        prop->t      (-> evt-hash ->prop->t)]
                    (when ?op-current
-                     (goog.object/set prop->t x-key (make-t from-x ?op-current tt-start))
-                     (goog.object/set prop->t y-key (make-t from-y ?op-current tt-start)))
+                     (js-map/assoc! prop->t :x (make-t from-x ?op-current tt-start))
+                     (js-map/assoc! prop->t :y (make-t from-y ?op-current tt-start)))
 
-                   (goog.object/set prop->t opacity-key (make-t from-opacity 0 tt-start)))))))
+                   (js-map/assoc! prop->t :opacity (make-t from-opacity 0 tt-start)))))))
+
+(defn* ^:memoizing ?cr->to-y [?cr]
+  (or
+   ;; up to last received main-creator event
+   (some-> ?cr
+           :concluded-round/last-received-event
+           (->> (iterate :received-event/prev-received-event)
+                (take-while some?)
+                (some (fn [{:received-event/keys [event]}] (when (= (hg/creator event) hg/main-creator) event))))
+           hga-view/evt->y)
+   0))
+
+(def cr-x (hga-view/idx->x (-indexOf hg-members/names hg/main-creator)))
+(def cr-tt-delay (/ tt 20))
+(def **last-cr-tt-start (volatile! (cljs.core/system-time)))
+(def **last-cr-direction (volatile! nil))
+(add-watch *last-concluded-round ::transitions-on-concluded-round
+           (fn [_ _ prev-cr current-cr]
+             (when (not (identical? prev-cr current-cr))
+               (if (> (:concluded-round/r current-cr)
+                      (:concluded-round/r prev-cr))
+                 (let [new-crs (into [] (comp (take-while some?)
+                                              (take-while (fn [cr] (not= cr prev-cr))))
+                                     (iterate :concluded-round/prev-concluded-round current-cr))]
+                   (vswap! **last-cr-tt-start (fn [last-tt-start] (if (= @**last-cr-direction :forwards)
+                                                                    (max last-tt-start (cljs.core/system-time))
+                                                                    (cljs.core/system-time))))
+                   (vreset! **last-cr-direction :forwards)
+                   (doseq [new-cr (reverse new-crs)]
+                     (let [received-events (->> (:concluded-round/last-received-event new-cr)
+                                                (iterate :received-event/prev-received-event)
+                                                (take-while some?)
+                                                (take-while #(= (:received-event/r %) (:concluded-round/r new-cr))))
+                           new-cr-from-y   (-> new-cr :concluded-round/prev-concluded-round ?cr->to-y)
+                           new-cr-to-y     (-> new-cr ?cr->to-y)
+                           to-y-offset     (-> new-cr-to-y
+                                               (- new-cr-from-y)
+                                               (/ (count (:concluded-round/es-r new-cr))))
+                           ->to-y          (fn [re] (+ new-cr-from-y (* to-y-offset (:received-event/r-idx (l re)))))
+                           to-x            cr-x]
+                       (doseq [re (reverse received-events)]
+                         (let [tt-start     (vswap! **last-cr-tt-start + cr-tt-delay)
+                               evt          (:received-event/event re)
+                               evt-hash     (-hash evt)
+                               current      (-> evt-hash ->current)
+                               prop->t      (-> evt-hash ->prop->t)
+                               to-y         (->to-y re)
+                               from-opacity (or (js-map/get current :fill-opacity)
+                                                (do (js-map/assoc! current :fill-opacity 0)
+                                                    0))]
+                           (js-map/assoc! current :fill (:received-event/color re))
+                           (js-map/assoc! prop->t :x            (make-t (js-map/get current :x) to-x tt-start))
+                           (js-map/assoc! prop->t :y            (make-t (js-map/get current :y) to-y tt-start))
+                           (js-map/assoc! prop->t :fill-opacity (make-t from-opacity 1 tt-start)))))))
+
+                 (let [crs-to-rewind (into [] (comp (take-while some?)
+                                                    (take-while (fn [cr] (not= cr current-cr))))
+                                           (iterate :concluded-round/prev-concluded-round prev-cr))]
+                   (vswap! **last-cr-tt-start (fn [last-tt-start] (if (= @**last-cr-direction :backwards)
+                                                                    (max last-tt-start (cljs.core/system-time))
+                                                                    (cljs.core/system-time))))
+                   (vreset! **last-cr-direction :backwards)
+                   (doseq [cr-to-rewind crs-to-rewind]
+                     (let [received-events (->> (:concluded-round/last-received-event cr-to-rewind)
+                                                (iterate :received-event/prev-received-event)
+                                                (take-while some?)
+                                                (take-while #(= (:received-event/r %) (:concluded-round/r cr-to-rewind))))]
+                       (doseq [re received-events]
+                         (let [evt           (:received-event/event re)
+                               evt-hash      (-hash evt)
+                               current       (-> evt-hash ->current)
+                               prop->t       (-> evt-hash ->prop->t)
+                               from-x        (js-map/get current :x)
+                               from-y        (js-map/get current :y)
+                               from-opacity  (js-map/get current :fill-opacity)
+                               to-x          (hga-view/evt->x evt)
+                               to-y          (hga-view/evt->y evt)
+                               to-opacity    0]
+                           #_(when (or (not= from-x to-x)
+                                     (not= from-y to-y)
+                                     (not= from-opacity to-opacity)))
+                           (let [tt-start (vswap! **last-cr-tt-start + cr-tt-delay)]
+                             (js-map/assoc! prop->t :x            (make-t from-x to-x tt-start))
+                             (js-map/assoc! prop->t :y            (make-t from-y to-y tt-start))
+                             (js-map/assoc! prop->t :fill-opacity (make-t from-opacity to-opacity tt-start))))))))))))
+
+#_
+(cljs.pprint/pprint
+ (macroexpand
+  '(letl [a 1]
+         (letl [b (+ a a)]
+               (l b)))))
+
+#_
+(macroexpand
+ '(letl [a 1
+         b (pr-str a)]
+        (l b)))
+
+#_
+(do (js* "debugger;")
+    (letl [a 1
+           b (println a)]
+          (l b)))
+
+#_(letl [a 1]
+      (letl [b (+ a a)]
+            (l (+ b b))))
+
+#_
+(letl [a 1
+       b (+ a a)]
+      (l (+ b b)))
+#_(l (+ 1 1))
+#_
+(log-relative
+ :a
+ (log-relative
+  :b
+  (l (+ 1 1))))
+#_
+(cljs.pprint/pprint
+ (macroexpand
+  '(doseq [a (range 10)]
+     (letl [b (+ a a)]
+           b))))
 
 (def *stats (atom {:from  (cljs.core/system-time)
                    :times 0}))
@@ -125,30 +243,31 @@
                                        (update :times inc)
                                        (assoc :to (cljs.core/system-time)))))
   (let [t-time-now (cljs.core/system-time)]
-    (goog.object/forEach
+    (.forEach
      event-hash->prop->t
-     (fn [prop->t event-hash _obj]
+     (fn [prop->t event-hash _js-map]
        (let [current (->current event-hash)]
-         (goog.object/forEach
+         (.forEach
           prop->t
-          (fn [t prop _obj]
-            (let [t-time-start  (goog.object/get t t-time-start-key)
-                  t-time-delta  (- t-time-now t-time-start)
-                  t-time-pos    (min 1 (/ t-time-delta tt))
-                  t-mod         (-> t-time-pos hga-timing/ease-in-out-cubic)
-                  t-val-from    (let [t-val-from* (goog.object/get t t-val-from-key)]
-                                  (if (object? t-val-from*)
-                                    (goog.object/get t-val-from* prop)
-                                    t-val-from*))
-                  t-val-to      (let [t-val-to* (goog.object/get t t-val-to-key)]
-                                  (if (object? t-val-to*)
-                                    (goog.object/get t-val-to* prop)
-                                    t-val-to*))
-                  t-val-delta   (- t-val-to t-val-from)
-                  t-val-current (+ t-val-from (* t-val-delta t-mod))]
-              (goog.object/set current prop t-val-current)
+          (fn [t prop _js-map]
+            (let [t-time-start  (js-map/get t :transition/time-start)
+                  t-time-delta  (- t-time-now t-time-start)]
+              (when (pos? t-time-delta)
+                (let [t-time-pos    (min 1 (/ t-time-delta tt))
+                      t-mod         (-> t-time-pos hga-timing/ease-in-out-cubic)
+                      t-val-from    (let [t-val-from* (js-map/get t :transition/val-from)]
+                                      (if (js-map/js-map? t-val-from*)
+                                        (js-map/get t-val-from* prop)
+                                        t-val-from*))
+                      t-val-to      (let [t-val-to* (js-map/get t :transition/val-to)]
+                                      (if (js-map/js-map? t-val-to*)
+                                        (js-map/get t-val-to* prop)
+                                        t-val-to*))
+                      t-val-delta   (- t-val-to t-val-from)
+                      t-val-current (+ t-val-from (* t-val-delta t-mod))]
+                  (js-map/assoc! current prop t-val-current)
 
-              (when (= 1 t-time-pos)
-                (goog.object/remove prop->t prop)))))
-         (when (goog.object/isEmpty prop->t)
-           (goog.object/remove event-hash->prop->t event-hash)))))))
+                  (when (= 1 t-time-pos)
+                    (js-map/dissoc! prop->t prop)))))))
+         (when (js-map/empty? prop->t)
+           (js-map/dissoc! event-hash->prop->t event-hash)))))))

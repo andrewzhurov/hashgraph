@@ -2,17 +2,14 @@
   (:refer-clojure
    :exclude [parents])
   (:require [cljs.math :refer [floor ceil]]
+            [garden.color :as gc]
             [hashgraph.members :as hg-members]
-            [hashgraph.utils :refer-macros [defn* defnm defnml l cl] :refer [*mem* *from-mem*]]
+            [hashgraph.utils.core :refer-macros [defn* defnm defnml l cl] :refer [*mem* *from-mem*]]
             [hashgraph.utils2 :refer-macros [td time3]]
-            [hashgraph.app.inspector :refer [log! log-set! log-flush!] :as hga-inspector]
+            [hashgraph.app.inspector :as hga-inspector]
             [taoensso.timbre :refer-macros [spy] :refer [log info]]
             [taoensso.tufte :as tufte :refer [defnp fnp p pspy profiled profile]]
             [clojure.set :refer [union] :as set]))
-
-;; perhaps put it in restart of app
-;; or make log evergreen.. which can't be the case, since logic change
-(log-flush!)
 
 ;; no point in memoize, it'll be more costly than looking up from x
 (def creator :event/creator)
@@ -741,20 +738,21 @@
 
                       last-received-event (concluded-round->received-event next-cr)
                       next-cr             (-> next-cr
-                                  ;; Here we kinda build cr->deriving-fn-name->derived-value indexes by hand.
-                                  ;; Because it increases performance, compared to deriving-fn-name->cr->derived-value.
-                                  ;; However, it couples code. Now we need to pass this index to deriving-fns, so it can lookup from it efficiently.
-                                  ;; Alternative is to pass context event x.
-                                  ;; Pro of rolling derived-info, is that it's all we need to progress onwards. Current derived-info is all we need to compute the next one.
-                                  ;; Although it's not strictly true, there may be novel pretty old events, to settle on their round we'd need derived info as of that time...
-                                  ;; Con in that for viz we need info about all previous events, not only the latest.
-                                  ;; So we're back to that we need info about y in context of x.
-                                  ;;
-                                  ;; Perhaps instead of building this index by hand, we can make derived out of cr indexes smarter about where they look up from.
-                                  ;; We can derive an index cr->deriving-fn-name->derived-value, and lookup from there.
-                                  ;; We can pass x as context, however, x can conclude multiple rounds, so deriving-fns would need to be parameterized with r to resolve x+r to the corresponding cr.
-                                  (assoc :concluded-round/last-received-event last-received-event)
-                                  (assoc :concluded-round/stake-map (?received-event->stake-map last-received-event)))]
+                                              ;; Here we kinda build cr->deriving-fn-name->derived-value indexes by hand.
+                                              ;; Because it increases performance, compared to deriving-fn-name->cr->derived-value.
+                                              ;; However, it couples code. Now we need to pass this index to deriving-fns, so it can lookup from it efficiently.
+                                              ;; Alternative is to pass context event x.
+                                              ;; Pro of rolling derived-info, is that it's all we need to progress onwards. Current derived-info is all we need to compute the next one.
+                                              ;; Although it's not strictly true, there may be novel pretty old events, to settle on their round we'd need derived info as of that time...
+                                              ;; Con in that for viz we need info about all previous events, not only the latest.
+                                              ;; So we're back to that we need info about y in context of x.
+                                              ;;
+                                              ;; Perhaps instead of building this index by hand, we can make derived out of cr indexes smarter about where they look up from.
+                                              ;; We can derive an index cr->deriving-fn-name->derived-value, and lookup from there.
+                                              ;; We can pass x as context, however, x can conclude multiple rounds, so deriving-fns would need to be parameterized with r to resolve x+r to the corresponding cr.
+                                              (assoc :concluded-round/stake-map (?received-event->stake-map last-received-event))
+                                              (cond->
+                                                  last-received-event (assoc :concluded-round/last-received-event last-received-event)))]
                   ;; try to conclude next round
                   (recur next-cr))))))))))
 
@@ -880,15 +878,15 @@
                     (hash-map :received-event/learned-by            learned-by
                               :received-event/middle-learned-events middle-learned-events
                               :received-event/received-time         received-time
-                              :received-event/concluded-round       concluded-round
-                              :received-event/event                 e-r))))
+                              :received-event/event                 e-r
+                              :received-event/r                     (:concluded-round/r concluded-round)))))
 
            (sort-by :received-event/received-time)
 
            ;; no value in building a chain of received events
            ;; TODO just store ordered received events on concluded-round
            (reduce (fn [?prev-received-event re-part]
-                     (let [r-idx (if (some-> ?prev-received-event :received-event/concluded-round :concluded-round/r (= r))
+                     (let [r-idx (if (some-> ?prev-received-event :received-event/r (= r))
                                    (-> ?prev-received-event :received-event/r-idx inc)
                                    0)
 
@@ -908,7 +906,7 @@
                              2 [rgb1 rgb2]
                              0 [rgb2 rgb3])
 
-                           chroma
+                           [r g b]
                            (map (fn [from-c to-c]
                                   (let [upper-c       (max from-c to-c)
                                         lower-c       (min from-c to-c)
@@ -922,8 +920,7 @@
                                     (ceil c)))
                                 from-rgb
                                 to-rgb)
-                           color (let [[red green blue] chroma]
-                                   (str "rgb(" red "," green "," blue ")"))]
+                           color (gc/rgb r g b)]
                        (cond-> (assoc re-part
                                       :received-event/idx   (or (some-> ?prev-received-event :received-event/idx inc)
                                                                 0)

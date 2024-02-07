@@ -6,7 +6,7 @@
    #_[garden.def :refer-macros [defkeyframes]]
    [garden.color :as gc]
    [garden.stylesheet :refer [at-keyframes]]
-   [hashgraph.utils
+   [hashgraph.utils.core
     :refer-macros [defn* l]
     :refer [*parent-log-path* *parent-log-path-logging?* *log-path* *log-path-logging?*
             debounce lazy-derived-atom atomic? conjs merge-attr-maps]
@@ -29,6 +29,8 @@
        (let [new-tm* (assoc! tm* nth nth)]
          (recur new-tm* (dec nth)))
        tm*))))
+
+(def *compact-names? (atom false))
 
 (def key->key-mod
   {"Shift"         :shift
@@ -81,45 +83,6 @@
                         (uninspect inspected value)
                         (inspect inspected value))))
   value)
-
-
-(def init-log {})
-(def ^:dynamic *log (atom init-log))
-(defn log-flush! [] (reset! *log init-log))
-
-(def default-log-path [:scratch])
-(defn ->log-path [?relative-path path]
-  (let [full-path (-> []
-                      (into ?relative-path)
-                      (into path))]
-    (if (not-empty full-path)
-      full-path
-      default-log-path)))
-
-(defn log!-with [with path value]
-  (swap! *log (fn [log] (cond-> log
-                          ;; add only when *tracing?*
-                          (and *parent-log-path-logging?* *parent-log-path*) (update-in (->log-path (into *parent-log-path* *log-path*) path) with value)
-                          *log-path-logging?* (update-in (->log-path *log-path* path) with value)))))
-
-(defn ->path [path-or-key] (if (seq? path-or-key) path-or-key (vector path-or-key)))
-(defn log!
-  ([value] (log! [] value))
-  ([path-or-key value]
-   (log!-with conj (->path path-or-key) value)
-   value))
-
-(defn unlog!
-  ([value] (unlog! [] value))
-  ([path-or-key value]
-   (log!-with disj (->path path-or-key) value)
-   nil))
-
-(defn log-set!
-  ([value] (log-set! [] value))
-  ([path-or-key value]
-   (log!-with (fn [_old new] new) (->path path-or-key) value)
-   value))
 
 (def ->in?
   (fn [coll el]
@@ -201,19 +164,18 @@
     {:opacity 1}]])
 
 (def inspector-styles
-  [[:.inspector-wrapper
-    {:width          "75vw"
-     :height         "100vh"
-     :bottom         "0px"
-     :right          "0px"
+  [[:#inspector
+    {:width          "100vw"
      :display        :flex
-     :flex-direction :column
-     :overflow-y     :scroll
-     :overflow-x     :scroll
+     :flex-direction :row
+     ;; :overflow-y     :hidden
+     ;; :overflow-x     :hidden
+     :overflow-y :scroll
+     :overflow-x :scroll
      :background     "rgba(255,255,255, 0.9)"}]
-   [:.inspector {:display :flex
+   [:.inspector {:display       :flex
                  :padding-right "10px"
-                 :width :fit-content}
+                 :width         :fit-content}
     [:.inspect
      icon-style
      [:img {:width "100%"
@@ -224,6 +186,8 @@
     [:table {:border          "1px solid gray"
              :padding "5px"
              :position :relative ;; for sticky keys
+             :height :fit-content
+             :width :fit-content
              ;; :border-collapse :collapse
              }
      [:.table-key {:position         :sticky
@@ -436,36 +400,38 @@
 
     (if horizontal?
       [:table.horizontal {:on-click flip!}
-       (->> ordered-ms-keys
-            (map-indexed
-             (fn [idx ms-key]
-               (let [new-opts (update opts :path conj idx)
-                     ms-vals (map #(get % ms-key) ms)]
-                 [:tr {:key idx}
-                  [:td.table-key (inspectable ms-vals new-opts)
-                   (inspector ms-key new-opts)]
-                  (->> ms
-                       (map-indexed (fn [idx m]
-                                      (let [new-opts (update new-opts :path conj idx)]
-                                        (if (not (contains? m ms-key))
-                                          [:td {:key idx}]
-                                          (let [ms-val (get m ms-key)]
-                                            [:td {:key idx}
-                                             (inspector ms-val new-opts)]))))))]))))]
+       (for [ms-key ordered-ms-keys]
+         (let [id       (hash ms-key)
+               new-opts (update opts :path conj ms-key)
+               ms-vals  (map #(get % ms-key) ms)]
+           [:tr {:key id}
+            [:td.table-key (merge {:key id}
+                                  (inspectable ms-vals new-opts))
+             (inspector ms-key new-opts)]
+            (->> ms
+                 (map-indexed
+                  (fn [idx m]
+                    (let [id       (hash m)
+                          new-opts (update new-opts :path conj idx)
+                          m-val    (get m ms-key utils/lookup-sentinel)]
+                      [:td {:key id}
+                       (when (not (identical? m-val utils/lookup-sentinel))
+                         (inspector m-val new-opts))]))))]))]
+
       [:table.vertical {:on-click flip!}
        [:thead
         [:tr
-         (->> ordered-ms-keys
-              (map-indexed (fn [idx ms-key]
-                             (let [new-opts (update opts :path conj idx)
-                                   ms-key-vals (->> ms
-                                                    (map ms-key)
-                                                    (filter some?))]
-                               [:th.table-key (merge-attr-maps {:key      idx
-                                                                :on-click #(do (.stopPropagation %)
-                                                                               (sort-by! ms-key))}
-                                                               (inspectable ms-key-vals new-opts))
-                                (inspector ms-key new-opts)]))))]]
+         (for [ms-key ordered-ms-keys]
+           (let [id          (hash ms-key)
+                 new-opts    (update opts :path conj id)
+                 ms-key-vals (->> ms
+                                  (map ms-key)
+                                  (filter some?))]
+             [:th.table-key (merge-attr-maps {:key      id
+                                              :on-click #(do (.stopPropagation %)
+                                                             (sort-by! ms-key))}
+                                             (inspectable ms-key-vals new-opts))
+              (inspector ms-key new-opts)]))]]
 
        [:tbody
         (->> ms
@@ -623,47 +589,18 @@
                                  [:div.collapsed-content-sym "..."]
                                  (inspector (rum/react *a) opts))])
 
-(rum/defc inspector-view-number < rum/static
+(rum/defc inspector-view-number < rum/static rum/reactive
   [num opts]
-  [:div.number {:title num}
+  [:div.number (merge {:title (str num)}
+                      (inspectable num))
    (if-not (int? num)
      (.toFixed num 1)
      num)])
 
-(def name->compact-name
-  (memoize
-   (fn [string-name]
-     (-> string-name
-         (clojure.string/split #"\-\>")
-         (->> (map (fn [part->]
-                     (-> part->
-                         (clojure.string/split #"\+")
-                         (->> (map (fn [part-plus]
-                                     (-> part-plus
-                                         (clojure.string/split #"\-")
-                                         (->> (map (fn [part-dash]
-                                                     (if (= (first part-dash) \?)
-                                                       (apply str (take 2 part-dash))
-                                                       (first part-dash))))
-                                              (apply str)))))
-                              (interpose "+")
-                              (apply str)))))
-              (interpose "->")
-              (apply str))))))
-
-(assert (= (name->compact-name "concluded-round->event-to-receive->learned-member->learned-event")
-           "cr->etr->lm->le"))
-
-(assert (= (name->compact-name "concluded-round+event->event-to-receive->learned-member->learned-event")
-           "cr+e->etr->lm->le"))
-
-(assert (= (name->compact-name "?concluded-round->stake-map")
-           "?cr->sm"))
-
-
-(rum/defc inspector-view-symbol < rum/static
+(rum/defc inspector-view-symbol < rum/static rum/reactive
   [sym opts]
-  [:div.symbol {:title (str sym)} (name->compact-name (str sym))])
+  [:div.symbol {:title (str sym)} (cond-> (str sym)
+                                    (rum/react *compact-names?) utils/name->compact-name)])
 
 (rum/defc inspector-view-default < rum/static
   [any]
@@ -769,10 +706,6 @@
 
            :else (inspector-view-default value new-opts))]))
 
-(def *traces (rum/cursor-in *log [:traces]))
-
-
-
 (defn* ^{:memoizing {:recur-by   (fn [[_ & rest-traces]] [rest-traces]) ;; warmup cache on cold start to escape max call stack exceeded due to deep uncached recursion
                      :recur-stop empty?
                      :only-last? true}
@@ -810,11 +743,12 @@
                                       ?new-medium-time-delta (assoc :fn-profile/medium-time-delta ?new-medium-time-delta)
                                       ?new-medium-time-deltas-medium (assoc :fn-profile/medium-time-deltas-medium ?new-medium-time-deltas-medium))))))))))
 
-(def *fn-profiles (lazy-derived-atom [*traces] ::*fn-profiles (fn [traces]
-                                                                (->> traces
-                                                                     traces->fn-profiles*
-                                                                     (map (fn [[fn-name fn-profile]]
-                                                                            (assoc fn-profile :fn-profile/fn-name fn-name)))))))
+(def *fn-profiles (lazy-derived-atom [utils/*traces] ::*fn-profiles
+                                     (fn [traces]
+                                       (->> traces
+                                            traces->fn-profiles*
+                                            (map (fn [[fn-name fn-profile]]
+                                                   (assoc fn-profile :fn-profile/fn-name fn-name)))))))
 
 (def *max-time-trace (lazy-derived-atom [*fn-profiles] ::*max-time-trace
                                         (fn [fn-profiles]
@@ -823,17 +757,18 @@
                                               last
                                               :fn-profile/max-time-trace))))
 
-(rum/defcs inspector-wrapper < rum/static rum/reactive (rum/local 0 ::*open-depth)
+(rum/defcs view < rum/static rum/reactive (rum/local 0 ::*open-depth)
   {:did-mount (fn [state]
                 (let [dom-node (rum/dom-node state)]
                   (set-inspector-wrapper-view-bounds! dom-node)
                   (assoc state ::on-scroll-end #(set-inspector-wrapper-view-bounds! dom-node))))}
   [{::keys [*open-depth on-scroll-end] :as state}]
   (let [opts {:expanded-depth @*open-depth :path []}]
-    [:div.inspector-wrapper {:on-scroll (debounce 100 on-scroll-end) ;; TODO only use in browsers that do not support :on-scroll-end event
-                             }
+    [:div#inspector {:on-scroll (debounce 100 on-scroll-end) ;; TODO only use in browsers that do not support :on-scroll-end event
+                     }
+     [:style (css inspector-styles)]
      [:div.logged "Logged"]
-     [:div.controls
+     #_[:div.controls
       [:button {:on-click #(log-flush!)} "flush"]
       [:input {:type          :range
                :min           0
@@ -841,7 +776,7 @@
                :default-value @*open-depth
                :on-change     (debounce 16 #(reset! *open-depth (-> % .-target .-value)))}]]
 
-     (inspector (rum/react *log) opts)
+     (inspector (rum/react utils/*log) opts)
 
      [:div.fn-profiles "Fn profiles"]
      (inspector *fn-profiles opts)
@@ -860,10 +795,3 @@
        [:<>
         [:div.peeked "Peeked"]
         (inspector peeked (assoc opts :expanded-depth 1))])]))
-
-
-(rum/defc view < rum/static rum/reactive
-  []
-  [:<>
-   [:style (css inspector-styles)]
-   (inspector-wrapper)])
