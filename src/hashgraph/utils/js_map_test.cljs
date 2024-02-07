@@ -14,15 +14,15 @@
   (testing "js-map/get"
     (let [m (js-map :a :b)]
       (is (= (js-map/get m :a) :b))
-      (is (every? number? (js-map/keys m)))))
+      (is (every? number? (js-map/keys-impl m)))))
 
   (testing "js-map/assoc!"
     (let [m (js-map)]
       (is (-> (js-map/assoc! m :a :b)
               (js-map/get :a)
               (= :b)))
-      (is (= 1 (count (js-map/keys m))))
-      (is (every? number? (js-map/keys m)))))
+      (is (= 1 (count (js-map/keys-impl m))))
+      (is (every? number? (js-map/keys-impl m)))))
 
   (testing "js-map/dissoc!"
     (let [m (js-map :a :b)]

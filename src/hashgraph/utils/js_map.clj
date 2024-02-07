@@ -51,5 +51,7 @@
   [js-map key]
   `(.has ~js-map ~(key->js-map-key key)))
 
-(defmacro keys [js-map]
+(defmacro keys-impl
+  "Returns keys as number (peek into implementation)"
+  [js-map]
   `(cljs.core/js->clj (js/Array.from (.keys ~js-map))))
