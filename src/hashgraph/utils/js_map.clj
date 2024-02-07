@@ -28,6 +28,10 @@
   `(do (.delete ~js-map ~(key->js-map-key key))
        ~js-map))
 
+(defmacro update! [js-map key with & args]
+  `(let [js-map# ~js-map]
+     (assoc! js-map# ~key (~with (get js-map# ~key) ~@args))))
+
 (defmacro js-map [& kvs]
   `(let [m# (new js/Map)]
      (doseq [[k# v#] ~(->> kvs

@@ -35,6 +35,18 @@
                     (js-map/dissoc! :a)
                     (js-map/get :c))))))
 
+  (testing "js-map/update!"
+    (let [m (js-map :a (js-map :b :c))]
+      (is (-> m
+              (js-map/update! :a js-map/dissoc! :b)
+              (js-map/get :a)
+              (js-map/empty?)))
+      (is (-> m
+              (js-map/assoc! :counter 0)
+              (js-map/update! :counter inc)
+              (js-map/get :counter)
+              (= 1)))))
+
   (testing "js-map/empty?"
     (let [m (js-map)]
       (is (true? (js-map/empty? m)))
