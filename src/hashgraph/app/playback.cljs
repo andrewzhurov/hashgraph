@@ -10,7 +10,7 @@
             [hashgraph.app.transitions :as hga-transitions]
             [hashgraph.app.utils :as hga-utils]
             [hashgraph.app.inspector]
-            [hashgraph.utils.core :refer-macros [defn* log-relative l letl letp] :as utils]
+            [hashgraph.utils.core :refer-macros [defn* l letl letp] :as utils]
             [taoensso.tufte :refer [profile p]]))
 
 

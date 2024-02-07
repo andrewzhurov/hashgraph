@@ -46,3 +46,27 @@
 
 (defn on-animation-frame! [callback]
   (js/requestAnimationFrame callback))
+
+(defn async-idle
+  "Async evokations of this function will evoke f only when it's not currently running - is idle."
+  [f]
+  (let [idle?* (volatile! true)]
+    (fn [& args]
+      (when @idle?*
+        (vreset! idle?* false)
+        (js/setTimeout #(do (apply f args)
+                            (vreset! idle?* true)))))))
+
+(defn once-per-render
+  [f]
+  (let [*ran? (volatile! false)]
+    (fn [& args]
+      (when-not @*ran?
+        (vreset! *ran? true)
+        (apply f args)
+        (js/requestAnimationFrame (fn [] (vreset! *ran? false)))))))
+
+(defn per-animation-frame-while [per-animation-frame-cb while-pred]
+  (js/requestAnimationFrame #(when (while-pred)
+                               (per-animation-frame-cb)
+                               (per-animation-frame-while per-animation-frame-cb while-pred))))

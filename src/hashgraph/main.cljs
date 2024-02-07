@@ -1075,5 +1075,5 @@
       (witness-or-self-witness main-hg ?cr))))
 
 (def main-creator "Charlie") ;; creator whose tip used to conclude in viz (he's not special for the main algorithm ^)
-(defn* events>->main-tip [events>] ;; desc
+(defn events>->main-tip [events>] ;; desc
   (->> events> (some (fn [evt] (when (= (:event/creator evt) main-creator) evt)))))

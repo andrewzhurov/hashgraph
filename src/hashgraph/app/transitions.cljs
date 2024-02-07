@@ -12,7 +12,7 @@
             [hashgraph.utils.core :refer [log!
                                           safe-assoc! safe-assoc-in!
                                           safe-update! safe-update-in!]
-             :refer-macros [l log-relative letl defn*]
+             :refer-macros [l letl defn*]
              :as utils]))
 
 (def tt 500) ;; transition time ms
@@ -26,6 +26,9 @@
 
 (defonce event-hash->current-view-state (js-map))
 (defonce event-hash->prop->t (js-map)) ;; property -> transition
+(defonce *view-id->react-comps (atom {})) ;; subscriptions from react components to view-id changes
+
+#_
 (defn reset-view-states! []
   (set! event-hash->current-view-state (js-map))
   (set! event-hash->prop->t (js-map)))
@@ -36,11 +39,22 @@
 #_(defonce _make-obj-lookapable
   (set! (.. js/Object -prototype -call) (fn [_ k] (println k) (this-as this (goog.object/get this k)))))
 
-;; TODO check if there's performance gain from having enum keys
-
 #_
 (defn ->left-desired? []
   (not (js-map/empty? event-hash->prop->t)))
+
+(defn subscribe-to-view-state-change [view-id react-comp]
+  (swap! *view-id->react-comps update view-id utils/conjs react-comp))
+
+(defn unsubscribe-to-view-state-change [view-id react-comp]
+  (swap! *view-id->react-comps update view-id disj react-comp))
+
+(defn notify-on-view-state-change [view-id]
+  (let [comps-to-notify (get @*view-id->react-comps view-id)]
+    (doseq [comp comps-to-notify]
+      (rum/request-render comp))))
+
+
 
 (defn view-id->in-transition? [view-id]
   (js-map/contains? event-hash->prop->t view-id))
@@ -107,15 +121,31 @@
                    (js-map/assoc! prop->t :opacity (make-t from-opacity 0 tt-start)))))))
 
 (defn* ^:memoizing ?cr->to-y [?cr]
-  (or
-   ;; up to last received main-creator event
-   (some-> ?cr
-           :concluded-round/last-received-event
-           (->> (iterate :received-event/prev-received-event)
-                (take-while some?)
-                (some (fn [{:received-event/keys [event]}] (when (= (hg/creator event) hg/main-creator) event))))
-           hga-view/evt->y)
-   0))
+  (let [#_#_
+        ?last-main-creator-re-y
+        (some-> ?cr
+                :concluded-round/last-received-event
+                (->> (iterate :received-event/prev-received-event)
+                     (take-while some?)
+                     (some (fn [{:received-event/keys [event]}] (when (= (hg/creator event) hg/main-creator) event))))
+                hga-view/evt->y)
+        ]
+    (max (+ 0 hga-view/wit-r)
+         (or
+          ;; first-main-creator-e-nr-to-y
+          (some-> ?cr
+                  :concluded-round/es-nr
+                  (->> (filter (fn [e] (= (hg/creator e) hg/main-creator)))
+                       (sort-by :event/creation-time))
+                  first
+                  hga-view/evt->y
+                  (- hga-view/sp-padding))
+          ;; main-creator-w-to-y
+          (some-> ?cr
+                  :concluded-round/ws
+                  (->> (some (fn [w] (when (= (hg/creator w) hg/main-creator) w))))
+                  hga-view/evt->y
+                  (- hga-view/sp-padding))))))
 
 (def cr-x (hga-view/idx->x (-indexOf hg-members/names hg/main-creator)))
 (def cr-tt-delay (/ tt 20))
@@ -134,7 +164,7 @@
                                                                     (cljs.core/system-time))))
                    (vreset! **last-cr-direction :forwards)
                    (doseq [new-cr (reverse new-crs)]
-                     (let [received-events (->> (:concluded-round/last-received-event new-cr)
+                     (letl [received-events (->> (:concluded-round/last-received-event new-cr)
                                                 (iterate :received-event/prev-received-event)
                                                 (take-while some?)
                                                 (take-while #(= (:received-event/r %) (:concluded-round/r new-cr))))
@@ -191,46 +221,6 @@
                              (js-map/assoc! prop->t :y            (make-t from-y to-y tt-start))
                              (js-map/assoc! prop->t :fill-opacity (make-t from-opacity to-opacity tt-start))))))))))))
 
-#_
-(cljs.pprint/pprint
- (macroexpand
-  '(letl [a 1]
-         (letl [b (+ a a)]
-               (l b)))))
-
-#_
-(macroexpand
- '(letl [a 1
-         b (pr-str a)]
-        (l b)))
-
-#_
-(do (js* "debugger;")
-    (letl [a 1
-           b (println a)]
-          (l b)))
-
-#_(letl [a 1]
-      (letl [b (+ a a)]
-            (l (+ b b))))
-
-#_
-(letl [a 1
-       b (+ a a)]
-      (l (+ b b)))
-#_(l (+ 1 1))
-#_
-(log-relative
- :a
- (log-relative
-  :b
-  (l (+ 1 1))))
-#_
-(cljs.pprint/pprint
- (macroexpand
-  '(doseq [a (range 10)]
-     (letl [b (+ a a)]
-           b))))
 
 (def *stats (atom {:from  (cljs.core/system-time)
                    :times 0}))
@@ -266,8 +256,29 @@
                       t-val-delta   (- t-val-to t-val-from)
                       t-val-current (+ t-val-from (* t-val-delta t-mod))]
                   (js-map/assoc! current prop t-val-current)
+                  (notify-on-view-state-change event-hash)
 
                   (when (= 1 t-time-pos)
                     (js-map/dissoc! prop->t prop)))))))
          (when (js-map/empty? prop->t)
            (js-map/dissoc! event-hash->prop->t event-hash)))))))
+
+(defn run-each-frame! []
+  (current->desired-run!)
+  (js/requestAnimationFrame run-each-frame!))
+
+(run-each-frame!)
+
+(defn mixin [id args->view-id]
+  {:will-mount    (fn [state]
+                    (if-let [view-id (apply args->view-id (:rum/args state))]
+                      (do (subscribe-to-view-state-change view-id (:rum/react-component state))
+                          (-> state
+                              (assoc-in [::id->view-id id] view-id)
+                              (assoc id (->current view-id))))
+                      state))
+
+   :will-unmount  (fn [state]
+                    (when-let [view-id (get-in state [::id->view-id id])]
+                      (unsubscribe-to-view-state-change view-id (:rum/react-component state)))
+                    state)})
