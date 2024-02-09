@@ -1,7 +1,10 @@
 (ns hashgraph.utils.core
   (:require [clojure.test :refer [deftest testing is are]]
+            [clojure.walk]
             [taoensso.tufte :as tufte]
-            [rum.core :as rum]))
+            [rum.core :as rum]
+            #?(:cljs [cljs.analyzer :as ana])))
+#?(:clj (alias 'ana 'cljs.analyzer))
 
 (def ^:dynamic *parent-log-path* nil)
 (def ^:dynamic *parent-log-path-logging?* true)
@@ -661,3 +664,19 @@
   `(when-not ~pred-expr (if ~?explanation
                           (js/console.warn "assert failed, " ~?explanation ", " ~(pr-str pred-expr))
                           (js/console.warn "assert failed, " ~(pr-str pred-expr)))))
+
+(defmacro macroexpand-names
+  "Recursively macroexpands all macros from the ns."
+  [names expr]
+  (let [names (set names)]
+    `(quote ~(clojure.walk/prewalk (fn expand-form [form]
+                                     (if-not (seq? form)
+                                       form
+                                       (if (or (-> form first symbol? not)
+                                               (-> form first name (names) not))
+                                         form
+                                         (let [expanded (ana/macroexpand-1 &env form)]
+                                           (if (= expanded form)
+                                             form
+                                             (expand-form expanded))))))
+                                   expr))))
