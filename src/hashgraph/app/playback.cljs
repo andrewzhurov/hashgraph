@@ -1,4 +1,5 @@
 (ns hashgraph.app.playback
+  (:require-macros [hashgraph.utils.js-map :as js-map])
   (:require [clojure.set :as set]
             [cognitect.transit :as transit]
             [rum.core :as rum]
@@ -93,7 +94,15 @@
                              new-played>              (concat played> to-play>)
                              [to-rewind> new-played>] (->> new-played> (split-with #(hga-view/->after-viz-playback-viewbox? (hga-view/evt->y %) new-viz-scroll)))
                              new-just-rewinded>       to-rewind>
-                             [new-rewinded< to-left<] (->> rewinded< (split-with hga-transitions/evt->in-transition?))
+                             [new-rewinded< to-left<] (->> rewinded< (split-at 6)
+                                                           ;; turned to be damm costly
+                                                           #_(split-with (fn [evt] (-> evt -hash
+                                                                                       hga-transitions/->view-state
+                                                                                       hga-transitions/->desired
+                                                                                       (js-map/get :y)
+                                                                                       (hga-view/->after-viz-viewbox? new-viz-scroll)
+                                                                                       not))
+                                                                         #_hga-transitions/evt->in-transition?))
                              new-rewinded<            (into new-rewinded< to-rewind>)
                              new-played<              (reverse new-played>)
                              ]

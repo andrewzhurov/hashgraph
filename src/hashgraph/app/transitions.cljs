@@ -1,5 +1,6 @@
 (ns hashgraph.app.transitions
   (:require-macros [hashgraph.utils.js-map :refer [js-map] :as js-map])
+  (:require-macros [hashgraph.app.transitions :refer [t!]])
   (:require [rum.core :as rum]
             [goog.object]
             [cljs.core :as core]
@@ -24,128 +25,115 @@
 (defonce *just-rewinded> (atom '()))
 (defonce *last-concluded-round (atom nil))
 
-(defonce view-id->current-view-state (js-map))
-(defonce view-id->prop->t (js-map)) ;; property -> transition
-(defonce *view-id->react-comps (atom {})) ;; subscriptions from react components to view-id changes
+(defonce view-id->view-state (js-map))
+(defonce view-state->with-t? (js-map))
 
-#_
-(defn reset-view-states! []
-  (set! view-id->current-view-state (js-map))
-  (set! view-id->prop->t (js-map)))
-#_(l view-id->current-view-state)
-#_(l view-id->desired-view-state)
-#_(js/console.log view-id->current-view-state)
-#_(js/console.log view-id->prop->t)
+#_(js/console.log (js-map/js-map->clj-map view-id->view-state))
+#_(js/console.log (js-map/js-map->clj-map view-state->with-t?))
+
 #_(defonce _make-obj-lookapable
   (set! (.. js/Object -prototype -call) (fn [_ k] (println k) (this-as this (goog.object/get this k)))))
 
-#_
-(defn ->left-desired? []
-  (not (js-map/empty? view-id->prop->t)))
+(defn subscribe-to-view-state-change [view-state react-comp]
+  (js-map/assoc-in! view-state [:view-state/subscribed-react-comps react-comp] true))
 
-(defn subscribe-to-view-state-change [view-id react-comp]
-  (swap! *view-id->react-comps update view-id utils/conjs react-comp))
+(defn unsubscribe-to-view-state-change [view-state react-comp]
+  (js-map/update! view-state :view-state/subscribed-react-comps js-map/dissoc! react-comp))
 
-(defn unsubscribe-to-view-state-change [view-id react-comp]
-  (swap! *view-id->react-comps update view-id disj react-comp))
+(defn notify-view-state-change [view-state]
+  (when-let [subscribed-react-comps (js-map/get view-state :view-state/subscribed-react-comps)]
+    (.forEach
+     subscribed-react-comps
+     (fn [_ comp _]
+       (rum/request-render comp)))))
 
-(defn notify-on-view-state-change [view-id]
-  (let [comps-to-notify (get @*view-id->react-comps view-id)]
-    (doseq [comp comps-to-notify]
-      (rum/request-render comp))))
+(defn ->view-state [view-id]
+  (or (js-map/get view-id->view-state view-id)
+      (let [view-state (js-map/js-map)]
+        (js-map/assoc! view-id->view-state view-id view-state)
+        view-state)))
 
-
-
-(defn view-id->in-transition? [view-id]
-  (js-map/contains? view-id->prop->t view-id))
-
-(defn evt->in-transition? [evt]
-  (view-id->in-transition? (-hash evt)))
-
-(defn ->current [view-id]
-  (or (js-map/get view-id->current-view-state view-id)
-      (let [current (js-map)]
-        (js-map/assoc! view-id->current-view-state view-id current)
+(defn ->current [view-state]
+  (or (js-map/get view-state :view-state/current)
+      (let [current (js-map/js-map)]
+        (js-map/assoc! view-state :view-state/current current)
         current)))
 
-(defn ->prop->t [view-id]
-  (or (js-map/get view-id->prop->t view-id)
-      (let [prop->t (js-map)]
-        (js-map/assoc! view-id->prop->t view-id prop->t)
+(defn ->desired [view-state]
+  (or (js-map/get view-state :view-state/desired)
+      (let [current (js-map/js-map)]
+        (js-map/assoc! view-state :view-state/desired current)
+        current)))
+
+(defn ->prop->t [view-state]
+  (or (js-map/get view-state :view-state/prop->t)
+      (let [prop->t (js-map/js-map)]
+        (js-map/assoc! view-state :view-state/prop->t prop->t)
         prop->t)))
 
-(defn make-t [val-from val-to time-start]
-  (js-map :transition/val-from val-from
-          :transition/val-to val-to
-          :transition/time-start time-start))
 
-(add-watch *just-played< ::transitions-on-playback
+
+(add-watch *just-played< ::just-played-transitions-on-playback
            (fn [_ _ _ just-played<]
              #_(log! :just-played< just-played<)
-             (let [tt-start (cljs.core/system-time)]
+             (let [tt-start (cljs.core/system-time)
+                   tt-end   (+ tt-start tt)]
                (doseq [evt just-played<]
-                 (let [evt-hash    (-> evt (-hash))
+                 (let [view-id     (-> evt (-hash))
+                       view-state  (-> view-id ->view-state)
                        ?op         (-> evt :event/other-parent)
-                       ?op-current (some-> ?op (-hash) ->current)
+                       ?op-current (some-> ?op (-hash) ->view-state ->current)
                        to-x        (-> evt hga-view/evt->x)
-                       to-y        (-> evt hga-view/evt->y)
-                       current     (-> evt-hash ->current)
-                       prop->t     (-> evt-hash ->prop->t)]
+                       to-y        (-> evt hga-view/evt->y)]
                    (if ?op-current
-                     (do (js-map/assoc! current :x (js-map/get ?op-current :x))
-                         (js-map/assoc! current :y (js-map/get ?op-current :y))
-                         (js-map/assoc! prop->t :x (make-t ?op-current to-x tt-start))
-                         (js-map/assoc! prop->t :y (make-t ?op-current to-y tt-start)))
-                     (do (js-map/assoc! current :x to-x)
-                         (js-map/assoc! current :y to-y)))
+                     (t! view-state
+                         :x tt-start ?op-current to-x tt-end
+                         :y tt-start ?op-current to-y tt-end
+                         :opacity tt-start 0 1 tt-end)
+                     (t! view-state
+                         :x       tt-start to-x to-x tt-end ;; use the same flow so :view-state/desired get's updated
+                         :y       tt-start to-y to-y tt-end
+                         :opacity tt-start 0    1    tt-end)))))))
 
-                   (js-map/assoc! prop->t :opacity (make-t 0 1 tt-start)))))))
-
-(add-watch *just-rewinded> ::transitions-on-playback
+(add-watch *just-rewinded> ::just-rewinded-transitions-on-playback
            (fn [_ _ _ just-rewinded>]
              #_(log! :just-rewinded> just-rewinded>)
-             (let [tt-start (cljs.core/system-time)]
+             (let [tt-start (cljs.core/system-time)
+                   tt-end   (+ tt-start tt)]
                (doseq [evt just-rewinded>]
-                 (let [evt-hash     (-> evt (-hash))
+                 (let [view-id      (-> evt (-hash))
+                       view-state   (-> view-id ->view-state)
+                       current      (-> view-state ->current)
                        ?op          (-> evt :event/other-parent)
-                       ?op-current  (some-> ?op (-hash) ->current)
-                       current      (-> evt-hash ->current)
+                       ?op-current  (some-> ?op (-hash) ->view-state ->current)
                        from-x       (js-map/get current :x)
                        from-y       (js-map/get current :y)
-                       from-opacity (js-map/get current :opacity)
-                       prop->t      (-> evt-hash ->prop->t)]
-                   (when ?op-current
-                     (js-map/assoc! prop->t :x (make-t from-x ?op-current tt-start))
-                     (js-map/assoc! prop->t :y (make-t from-y ?op-current tt-start)))
-
-                   (js-map/assoc! prop->t :opacity (make-t from-opacity 0 tt-start)))))))
+                       from-opacity (js-map/get current :opacity)]
+                   (if ?op-current
+                     (t! view-state
+                         :x       tt-start from-x       ?op-current tt-end
+                         :y       tt-start from-y       ?op-current tt-end
+                         :opacity tt-start from-opacity 0           tt-end)
+                     (t! view-state
+                         :opacity tt-start from-opacity 0           tt-end)))))))
 
 (defn* ^:memoizing ?cr->to-y [?cr]
-  (let [#_#_
-        ?last-main-creator-re-y
+  (max (+ 0 hga-view/wit-r)
+       (or
+        ;; first-main-creator-e-nr-to-y
         (some-> ?cr
-                :concluded-round/last-received-event
-                (->> (iterate :received-event/prev-received-event)
-                     (take-while some?)
-                     (some (fn [{:received-event/keys [event]}] (when (= (hg/creator event) hg/main-creator) event))))
-                hga-view/evt->y)
-        ]
-    (max (+ 0 hga-view/wit-r)
-         (or
-          ;; first-main-creator-e-nr-to-y
-          (some-> ?cr
-                  :concluded-round/es-nr
-                  (->> (filter (fn [e] (= (hg/creator e) hg/main-creator)))
-                       (sort-by :event/creation-time))
-                  first
-                  hga-view/evt->y
-                  (- hga-view/sp-padding))
-          ;; main-creator-w-to-y
-          (some-> ?cr
-                  :concluded-round/ws
-                  (->> (some (fn [w] (when (= (hg/creator w) hg/main-creator) w))))
-                  hga-view/evt->y
-                  (- hga-view/sp-padding))))))
+                :concluded-round/es-nr
+                (->> (filter (fn [e] (= (hg/creator e) hg/main-creator)))
+                     (sort-by :event/creation-time))
+                first
+                hga-view/evt->y
+                (- hga-view/sp-padding))
+        ;; main-creator-w-to-y
+        (some-> ?cr
+                :concluded-round/ws
+                (->> (some (fn [w] (when (= (hg/creator w) hg/main-creator) w))))
+                hga-view/evt->y
+                (- hga-view/sp-padding)))))
 
 (def cr-x (hga-view/idx->x (-indexOf hg-members/names hg/main-creator)))
 (def cr-tt-delay (/ tt 20))
@@ -164,7 +152,7 @@
                                                                     (cljs.core/system-time))))
                    (vreset! **last-cr-direction :forwards)
                    (doseq [new-cr (reverse new-crs)]
-                     (letl [received-events (->> (:concluded-round/last-received-event new-cr)
+                     (let [received-events (->> (:concluded-round/last-received-event new-cr)
                                                 (iterate :received-event/prev-received-event)
                                                 (take-while some?)
                                                 (take-while #(= (:received-event/r %) (:concluded-round/r new-cr))))
@@ -178,17 +166,18 @@
                        (doseq [re (reverse received-events)]
                          (let [tt-start     (vswap! **last-cr-tt-start + cr-tt-delay)
                                evt          (:received-event/event re)
-                               evt-hash     (-hash evt)
-                               current      (-> evt-hash ->current)
-                               prop->t      (-> evt-hash ->prop->t)
+                               view-id      (-hash evt)
+                               view-state   (-> view-id ->view-state)
+                               current      (-> view-state ->current)
                                to-y         (->to-y re)
-                               from-opacity (or (js-map/get current :fill-opacity)
-                                                (do (js-map/assoc! current :fill-opacity 0)
-                                                    0))]
+                               from-fill-opacity (or (js-map/get current :fill-opacity)
+                                                     (do (js-map/assoc! current :fill-opacity 0)
+                                                         0))]
                            (js-map/assoc! current :fill (:received-event/color re))
-                           (js-map/assoc! prop->t :x            (make-t (js-map/get current :x) to-x tt-start))
-                           (js-map/assoc! prop->t :y            (make-t (js-map/get current :y) to-y tt-start))
-                           (js-map/assoc! prop->t :fill-opacity (make-t from-opacity 1 tt-start)))))))
+                           (t! view-state
+                               :x tt-start (js-map/get current :x) to-x nil ;; blank tt-end, as it's not used atm by the engine anyway
+                               :y tt-start (js-map/get current :y) to-y nil
+                               :fill-opacity tt-start from-fill-opacity 1 nil))))))
 
                  (let [crs-to-rewind (into [] (comp (take-while some?)
                                                     (take-while (fn [cr] (not= cr current-cr))))
@@ -204,22 +193,23 @@
                                                 (take-while #(= (:received-event/r %) (:concluded-round/r cr-to-rewind))))]
                        (doseq [re received-events]
                          (let [evt           (:received-event/event re)
-                               evt-hash      (-hash evt)
-                               current       (-> evt-hash ->current)
-                               prop->t       (-> evt-hash ->prop->t)
+                               view-id       (-hash evt)
+                               view-state    (-> view-id ->view-state)
+                               current       (-> view-state ->current)
                                from-x        (js-map/get current :x)
                                from-y        (js-map/get current :y)
-                               from-opacity  (js-map/get current :fill-opacity)
+                               from-fill-opacity  (js-map/get current :fill-opacity)
                                to-x          (hga-view/evt->x evt)
                                to-y          (hga-view/evt->y evt)
-                               to-opacity    0]
+                               to-fill-opacity    0]
                            #_(when (or (not= from-x to-x)
                                      (not= from-y to-y)
                                      (not= from-opacity to-opacity)))
                            (let [tt-start (vswap! **last-cr-tt-start + cr-tt-delay)]
-                             (js-map/assoc! prop->t :x            (make-t from-x to-x tt-start))
-                             (js-map/assoc! prop->t :y            (make-t from-y to-y tt-start))
-                             (js-map/assoc! prop->t :fill-opacity (make-t from-opacity to-opacity tt-start))))))))))))
+                             (t! view-state
+                                 :x tt-start from-x to-x nil
+                                 :y tt-start from-y to-y nil
+                                 :fill-opacity tt-start from-fill-opacity to-fill-opacity nil)))))))))))
 
 
 (def *stats (atom {:from  (cljs.core/system-time)
@@ -234,34 +224,35 @@
                                        (assoc :to (cljs.core/system-time)))))
   (let [t-time-now (cljs.core/system-time)]
     (.forEach
-     view-id->prop->t
-     (fn [prop->t view-id _js-map]
-       (let [current (->current view-id)]
+     view-state->with-t?
+     (fn [_with-t? view-state _js-map]
+       (let [current (-> view-state (->current))
+             prop->t (-> view-state (->prop->t))]
          (.forEach
           prop->t
           (fn [t prop _js-map]
-            (let [t-time-start  (js-map/get t :transition/time-start)
-                  t-time-delta  (- t-time-now t-time-start)]
+            (let [t-time-start (js-map/get t :transition/time-start)
+                  t-time-delta (- t-time-now t-time-start)]
               (when (pos? t-time-delta)
                 (let [t-time-pos    (min 1 (/ t-time-delta tt))
                       t-mod         (-> t-time-pos hga-timing/ease-in-out-cubic)
-                      t-val-from    (let [t-val-from* (js-map/get t :transition/val-from)]
+                      t-val-from    (let [t-val-from* (js-map/get t :transition/val-start)]
                                       (if (js-map/js-map? t-val-from*)
                                         (js-map/get t-val-from* prop)
                                         t-val-from*))
-                      t-val-to      (let [t-val-to* (js-map/get t :transition/val-to)]
+                      t-val-to      (let [t-val-to* (js-map/get t :transition/val-end)]
                                       (if (js-map/js-map? t-val-to*)
                                         (js-map/get t-val-to* prop)
                                         t-val-to*))
                       t-val-delta   (- t-val-to t-val-from)
                       t-val-current (+ t-val-from (* t-val-delta t-mod))]
                   (js-map/assoc! current prop t-val-current)
-                  (notify-on-view-state-change view-id)
+                  (notify-view-state-change view-state)
 
                   (when (= 1 t-time-pos)
                     (js-map/dissoc! prop->t prop)))))))
          (when (js-map/empty? prop->t)
-           (js-map/dissoc! view-id->prop->t view-id)))))))
+           (js-map/dissoc! view-state->with-t? view-state)))))))
 
 (defn run-each-frame! []
   (current->desired-run!)
@@ -272,13 +263,14 @@
 (defn mixin [id args->view-id]
   {:will-mount    (fn [state]
                     (if-let [view-id (apply args->view-id (:rum/args state))]
-                      (do (subscribe-to-view-state-change view-id (:rum/react-component state))
-                          (-> state
-                              (assoc-in [::id->view-id id] view-id)
-                              (assoc id (->current view-id))))
+                      (let [view-state (-> view-id ->view-state)]
+                        (subscribe-to-view-state-change view-state (:rum/react-component state))
+                        (-> state
+                            (assoc-in [::id->view-state id] view-state)
+                            (assoc id (-> view-state ->current))))
                       state))
 
    :will-unmount  (fn [state]
-                    (when-let [view-id (get-in state [::id->view-id id])]
-                      (unsubscribe-to-view-state-change view-id (:rum/react-component state)))
+                    (when-let [view-state (get-in state [::id->view-state id])]
+                      (unsubscribe-to-view-state-change view-state (:rum/react-component state)))
                     state)})
