@@ -798,6 +798,7 @@ identical?
     :rqd (fn [nth] (vswap! request-queue-distinct conj nth))}))
 ;; distinct performs on-pair with set, slower than original
 
+#_#_#_#_
 (def *react-comps (atom []))
 (rum/defcs test-comp <
   {:did-mount (fn [state] (swap! *react-comps conj (:rum/react-component state)) state)}
@@ -809,9 +810,7 @@ identical?
      (test-comp nth))))
 (rum/mount (test-root-comp (range 100)) (.getElementById js/document "root"))
 
-@*react-comps
-(js/console.log (test-comp))
-
+#_
 (let [request-queue          (volatile! [])
       render-times           (range 1000)
       render-comps-builder   #(interleave @*react-comps @*react-comps) ;; simulates two render requests per comp
@@ -923,6 +922,7 @@ identical?
 
 
 ;; does js/Map preserve order in which keys were added?
+#_
 (let [js-map (new js/Map)]
   (doseq [nth (range 1000)]
     (.set js-map nth nth))
@@ -933,6 +933,7 @@ identical?
 
 
 ;; does React re-renders the same comp requested multiple times
+#_
 (rum/defcs test-comp2 < (rum/local 0 ::*a) (rum/local 0 ::*b) rum/reactive
   {:did-mount (fn [state] (js/setTimeout #(do (swap! (::*a state) inc)
                                               (swap! (::*b state) inc)))
@@ -942,6 +943,7 @@ identical?
   [:div
    @*a @*b])
 
+#_
 (rum/mount (test-comp2) (.getElementById js/document "root"))
 ;; gets in Rum request-queue two times, renders by React once
 
@@ -980,6 +982,7 @@ identical?
 #_((js-obj :a 2) :a) ;; works!
 )
 
+#_
 (extend-type object
   IAssociative
   (-assoc [coll k v]
@@ -989,6 +992,7 @@ identical?
     coll))
 
 ;; how much slower does it get with using that ^ vs plain goog.object/set
+#_
 (let [obj1 (js-obj)
       obj2 (js-obj)]
   (bench-compare #(range 10000) {:plain #(goog.object/set obj1 % %)
@@ -1002,6 +1006,7 @@ identical?
 (def ^:dynamic obj1 (js-obj))
 (def ^:dynamic obj2 (js-obj))
 (def ^:dynamic js-map (new js/Map))
+#_
 (let [nths (doall (range 10000))]
   (let [[obj1-t _]
         (timed
@@ -1076,3 +1081,10 @@ identical?
 ;; how does it compare with js/Map?
 ;; js/Map with idx keys are by far the fastest
 ;; how does it compare with js/Array? can't update val at index - no use.
+
+#_
+(utils/macroexpand-names
+ ["let"]
+ (let [a 1]
+   (let [b (+ a a)]
+     b)))

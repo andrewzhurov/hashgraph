@@ -79,6 +79,11 @@ E.g., on hover.
 Use a class to scale, like .scale-2x on root flame trace.
 ** TODO inspector to scroll viz to peeked events
 *** perhaps Browser's search can be used to go through matched results
+** TODO inspector to show seq's lazily
+As there can be > 1k elements, showing them eagerly is not needed and damm not performant.
+*** only useful for dev build with a ton of traces or memos
+**** so won't be of that much use if dev version is not deployed
+
 
 * DONE fix inspector
 * DONE pass top evt and not witness
@@ -89,42 +94,46 @@ Use a class to scale, like .scale-2x on root flame trace.
 ** DONE expand on plain click
 * DONE add flip as right-click option
 * TODO make it easier to uninspect
-* TODO show stake-map as of prev cr
-* TODO trace as meta on returned values
+* DONE show stake-map as of prev cr
+* IDEA trace as meta on returned values
 ** cons: primitive values won't be traced
 *** solution: wrap returned values in trace object
 ** cons: on error won't see trace
 *** solution: errors as data
 ** alternatively: store trace into inspector's log, use it as mem as well
-* TODO inspector to show seq's lazily
-As there can be > 1k elements, showing them eagerly is not needed and damm not performant.
-** only useful for dev build with a ton of traces or memos
-*** so won't be of that much use if dev version is not deployed
+
 * TODO add ns as table key, add #1 #2 entities in table view
-* TODO dense table rows on multiple events inspection
+* DONE dense table rows on multiple events inspection
 * TODO pretty table highlight on peek/inspected
-* TODO maybe show stake as member's shirt
-* TODO ready viz by 3rd February, deploy and get feedback
+* CANCELLED maybe show stake as member's shirt
+Shown intersity of background color instead
+** TODO make it inspectable
+* TODO ready viz by 18th February, deploy and get feedback
 * TODO perhaps layout viz horizontaly on wide displays
+** DONE horizontal view
+** TODO select view mode based on screen resolution
+** TODO controls to switch between horizontal/vertical mode
 * TODO animate received events
 * TODO add explanation on first appearance of novel algorithm behaviour
 * TODO playback controls
-** TODO sync with scroll
+** DONE sync with scroll
 ** TODO playback one event
 ** TODO rewind back on scroll up
 ** TODO freeze to not rewind on scroll
-* TODO starting position to issue one event
+* CANCELLED starting position to issue one event
+Starting position is an intro section, event's are issued as user scrolls to the viz section.
 * TODO pretty design
 ** TODO perhaps intro section
 ** TODO layout
 ** TODO background
-* TODO buffer more events ahead-of-time on idle, so it's snappier to viz them
+* DONE buffer more events ahead-of-time on idle, so it's snappier to viz them
 * TODO test on Firefox
 * TODO test on Safari
 * TODO test on mobile
 * TODO test on high res
-* TODO fix received events popping
-* TODO perhaps untie transitions from rendered events
+* DONE fix received events popping
+* DONE perhaps untie transitions from rendered events
+Now transition's engine is calculating all transitions, react components subscribe to the view-state they're interested in.
 * TODO fix stuck round
 That's perhaps due to dirty mem lookup.
 * TODO better peek viz
@@ -137,13 +146,14 @@ That's perhaps due to dirty mem lookup.
 ** TODO stake map
 ** TODO votes
 * TODO cleanup html
-* TODO received events may have the same x y, not desired
+* CANCELLED received events may have the same x y, not desired
+No more a problem, since received events form a blockchain viz now.
 * TODO hardly reachable members may issue it's stale event, which will make refs look not pretty
 [[~/notes/org-roam/store/sha256/cba97c7bda1f19a7835ebf4c531f784986ce1befb32492c3d3e4638238490e89]]
 * maybe lookup from mem as goog.object will be faster than (transient (hash-map))
 It's about the same speed, be it js-obj is a bit faster
 ** TODO maybe switch mem to js-obj by args hash
-* TODO switch mem warmup to loop with recur
+* DONE switch mem warmup to loop with recur
 
 * objectives
 ** understand the algo to see how it can be applied in NG

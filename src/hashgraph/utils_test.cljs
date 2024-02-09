@@ -5,7 +5,7 @@
              :as utils]
             [taoensso.tufte :as tufte]
             [goog.object :as gobject]
-            [clojure.test :refer [deftest testing is are run-tests]]))
+            [clojure.test :refer [deftest testing is are]]))
 
 #_
 (macroexpand '(defn* ^:memoizing ^:tracing test [a b] (+ 1 b)))

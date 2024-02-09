@@ -418,7 +418,7 @@
   []
   [:div#viz-section {:style {:position :relative}}
    (controls-view)
-   #_(hga-tutorial/view)
+   (hga-tutorial/view)
    (viz)
    (hga-inspector/view)])
 

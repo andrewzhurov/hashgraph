@@ -1,7 +1,8 @@
 (ns hashgraph.app.screen
   "Entry ns for the browser app"
   {:dev/always true}
-  (:require-macros [cljs-thread.core :refer [spawn]])
+  (:require-macros [cljs-thread.core :refer [spawn]]
+                   [cljs.test :refer [run-tests run-all-tests]])
   (:require [cljs-thread.core :as thread]
             [cljs-thread.state :as thread-s]
             [cljs-thread.spawn :as thread-sp]
@@ -14,9 +15,7 @@
             [hashgraph.app.page :as page]
             [hashgraph.utils.core :refer [log-flush!] :refer-macros [l]]
             [hashgraph.utils-test]
-            [hashgraph.utils.js-map-test]
-            [clojure.test :refer [run-all-tests]]))
-
+            [hashgraph.utils.js-map-test]))
 
 #_#_
 (defn in-safari? []
@@ -37,10 +36,18 @@
              (r/init-root! config))
       )))
 
+#_
+(defn run-tests* []
+  (run-tests ~env
+             ~@(map
+                (fn [ns] `(quote ~ns))
+                (cond->> (ana-api/all-ns)
+                  re (filter #(re-matches re (name %)))))))
+
 (defn start []
   ;; start is called after code's been reloaded
   ;; this is configured in :after-load in the shadow-cljs.edn
-  (run-all-tests #"hashgraph\..*")
+  #_(js/setTimeout 100 #(run-all-tests #".*" #_#"hashgraph\..*test.*"))
 
   (when-let [node (.getElementById js/document "root")]
     (rum/mount (page/view) node))
