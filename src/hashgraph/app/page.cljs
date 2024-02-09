@@ -343,7 +343,8 @@
 
 (def *rendered-evt-infos
   (rum/derived-atom [hga-playback/*playback] ::*rendered-evt-infos
-    (fn [{:keys [played<   ;; asc
+    (fn [{:keys [behind>
+                 played<   ;; asc
                  rewinded< ;; asc
                  ]}]
       (let [played>               (reverse played<)
@@ -386,7 +387,10 @@
                                                                       :event-info/voting-by         voting-by
                                                                       :event-info/?concluded-in-cr  ?concluded-in-cr)
                                                       ?received-event (assoc :event-info/received-event ?received-event)))))]
-        [(->> (reverse played<)
+        [(->> behind>
+              (take 10)
+              (map ->event-info))
+         (->> played>
               (map ->event-info))
          (->> (reverse rewinded<)
               (map ->event-info))]))))
@@ -394,13 +398,13 @@
 
 (rum/defc viz < rum/reactive
   []
-  (let [[played-evt-infos> rewinded-evt-infos>] (rum/react *rendered-evt-infos)]
+  (let [[behind-evt-infos> played-evt-infos> rewinded-evt-infos>] (rum/react *rendered-evt-infos)]
     [:div#viz
      (hga-members/view)
      [:svg#render {(if hga-view/view-mode-horizontal? :width :height) (hga-view/evt->viz-height (-> played-evt-infos> first :event-info/event))
                    (if hga-view/view-mode-horizontal? :height :width) hga-view/viz-size}
       [:g.events-view
-       (for [evt-info (concat played-evt-infos> rewinded-evt-infos>)]
+       (for [evt-info (concat behind-evt-infos> played-evt-infos> rewinded-evt-infos>)]
          (event-view evt-info))]]]))
 
 (rum/defc controls-view < rum/reactive []
