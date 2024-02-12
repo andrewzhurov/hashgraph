@@ -392,10 +392,10 @@
             ;; Not pretty, but pretty efficient
             (reduce (fn [wc->sbcs-acc [wc op-sbcs]]
                       (let [sbcs-acc (get wc->sbcs-acc wc)]
-                        (if (identical? sbcs-acc true)
+                        (if (true? sbcs-acc)
                           wc->sbcs-acc
 
-                          (if (identical? op-sbcs true)
+                          (if (true? op-sbcs)
                             (let [new-wcs-stake (+ (meta wc->sbcs-acc) (get stake-map wc))]
                               (if (> new-wcs-stake many-stake)
                                 (reduced true)
@@ -428,7 +428,7 @@
                                                         (with-meta new-biggest-sbcs-acc-stake))))))
                                             biggest
                                             smallest)]
-                                (if (identical? new-sbcs-acc true)
+                                (if (true? new-sbcs-acc)
                                   (let [new-wcs-stake (+ (meta wc->sbcs-acc) (get stake-map wc))]
                                     (if (> new-wcs-stake many-stake)
                                       (reduced true)
@@ -438,7 +438,7 @@
                                   (assoc wc->sbcs-acc wc new-sbcs-acc))))))))
                     acc
                     to-reduce)
-            r-next?      (identical? wc->sbcs true)
+            r-next?      (true? wc->sbcs)
             r            (if r-next?  (inc max-p-r) max-p-r)
             round-final? (<= r (or (inc (:concluded-round/r cr)) 1))]
 
