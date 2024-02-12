@@ -186,6 +186,39 @@
   (is (= (name->compact-name "?concluded-round->stake-map")
          "?cr->sm")))
 
+
+(defn flatten-all [maybe-flattable]
+  (if-not (or (seq? maybe-flattable) (vector? maybe-flattable) (set? maybe-flattable))
+    maybe-flattable
+    (let [flattable maybe-flattable]
+      (->> flattable
+           (map flatten-all)
+           (reduce (fn [flattened-acc maybe-flattened]
+                     (if-not (vector? maybe-flattened)
+                       (conj flattened-acc maybe-flattened)
+                       (let [flattened maybe-flattened]
+                         (vec (distinct (into flattened-acc flattened))))))
+                   [])))))
+
+(deftest flatten-all-test
+  (is (-> (flatten-all ['(1 2) #{3 4} [5 #{5 6 7}]])
+          (sort)
+          (= '(1 2 3 4 5 6 7)))))
+
+(defn partition-at-with [with coll]
+  (->> coll
+       (reduce (fn [[last-part & rest-parts :as parts] el]
+                 (if (with el)
+                   (conj parts [el])
+                   (conj rest-parts (conj last-part el))))
+               '([]))
+       reverse
+       vec))
+
+(deftest partition-at-with-test
+  (is (= (partition-at-with keyword? [1 2 :k 3 4 :k 5 6])
+         [[1 2] [:k 3 4] [:k 5 6]])))
+
 (def range-map
   (memoize
    (fn
@@ -299,9 +332,42 @@
                         (reduce into [] vals)
 
                         :else
-                        (do (log! "Don't know how to merge, taking the last of vals: " (pr-str vals))
+                        (do (log! [:warnings] {:message "Don't know how to merge, taking the last val."
+                                               :vals    vals})
                             (last vals))))
          attr-maps))
+
+#?(:clj
+   (defn k->val-fn? [k] (clojure.string/starts-with? (name k) "on-")))
+
+#?(:clj (require '[hashgraph.app.inspector :refer-macros [inspectable*]]))
+(defmacro merge-attr-maps* [attr-map1 attr-map2 & rest-attr-maps]
+  ;; works only on plain {} as args
+  (let [merged1
+        (reduce
+         (fn [attr-map-acc [k v]]
+           (if-not (contains? attr-map-acc k)
+             (assoc attr-map-acc k v)
+             (update attr-map-acc k (fn [acc-v]
+                                      (cond (k->val-fn? k)
+                                            `(fn [] ~acc-v ~v)
+                                            (and (map? acc-v)
+                                                 (map? v))
+                                            (merge-attr-maps* acc-v v)
+                                            (and (sequential? acc-v)
+                                                 (sequential? v))
+                                            (into acc-v v)
+                                            :else
+                                            (do (log! [:warnings] {:message "Don't know how to merge, taking the last val."
+                                                                   :vals    [acc-v v]})
+                                                v))))))
+         attr-map1
+         attr-map2)]
+    merged1
+    #_
+    (if (empty? rest-attr-maps)
+      merged1
+      (apply merge-attr-maps* merged1 rest-attr-maps))))
 
 (defn conjs [?coll el]
   (if (and (some? ?coll)

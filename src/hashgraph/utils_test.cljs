@@ -75,4 +75,14 @@
   ;;                         [['(tracing-test-fn-multiply-sums 1 1) '(tracing-test-fn-sum 1 1)] {}]])
   ;;                     (str "found instead " (with-out-str (cljs.pprint/pprint (:traces @*log)))))))
 
-  )
+
+  (testing "merge-attr-maps*"
+    (let [*state (atom {})
+          inc-counter! #(swap! *state update :counter inc)
+          merged (macroexpand '(utils/merge-attr-maps* {:class    [(when true :true1)]
+                                                        :on-click inc-counter!}
+                                                       {:class    [(when true :true2)]
+                                                        :on-click inc-counter!}))]
+      (is (= merged
+             {:class    [(when true :true1) (when true :true2)],
+              :on-click (clojure.core/fn [] inc-counter! inc-counter!)})))))

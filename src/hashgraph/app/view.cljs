@@ -110,3 +110,21 @@
 (defn ->after-viz-playback-viewbox? [y viz-scroll]
   (let [playback-view-bound-max (+ viz-scroll playback-size)]
     (> y playback-view-bound-max)))
+
+
+(defn t [& t-descs]
+  (let [[first-part* & rest-parts] (utils/partition-at-with keyword? (rest t-descs))
+        parts                      (cons (cons (first t-descs) first-part*) rest-parts)]
+    (->> parts
+         (map (fn [t-desc] (->> t-desc
+                                (map (fn [t-desc-el] (cond (keyword? t-desc-el) (name t-desc-el)
+                                                           (number? t-desc-el) (str t-desc-el "ms")
+                                                           :else t-desc-el)))
+                                (clojure.string/join " " ))))
+         (clojure.string/join ", "))))
+
+(deftest t-test
+  (is (= (t :opacity 100 "ease"
+            :r 200 "easeOut" 100
+            :color 400 "easeIn" 300)
+         "opacity 100ms ease, r 200ms easeOut 100ms, color 400ms easeIn 300ms")))
