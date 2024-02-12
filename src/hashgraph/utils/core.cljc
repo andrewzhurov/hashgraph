@@ -51,7 +51,8 @@
 (def *id->logger (atom {}))
 (defn add-logger! [id logger] (swap! *id->logger assoc id logger))
 #?(:clj  (add-logger! :console (fn [path _with value] (println path value)))
-   :cljs (add-logger! :*log (fn [path with value] (swap! *log update-in path with value))))
+   :cljs (do (add-logger! :*log (fn [path with value] (swap! *log update-in path with value)))
+             (add-logger! :*console (fn [path with value] (js/console.log path value)))))
 
 (defn log!* [path with value]
   (doseq [[_id logger] @*id->logger]
