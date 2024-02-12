@@ -81,11 +81,9 @@
 
 (defn c->hg->events> [c->hg]
   (let [tips        (vals c->hg)
-        _ (log! :tips tips)
         events> (-> tips
                     ;; this recursion may blowup
                     (->> (map hg/ancestors)
-                         (log! :ancestors)
                          (apply set/union))
                     (into tips)
                     (->> (sort-by :event/creation-time >)))]
