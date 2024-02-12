@@ -67,21 +67,23 @@
 ;; (defn peek-set! [value] (reset! *peeked #{value}) value)
 ;; (defn peek! [value] (peek-set! value) #_(swap! *peeked conj value) value)
 ;; (defn unpeek! [value] (swap! *peeked disj value) value)
-(def inspected-init (utils/sorted-set-by* (comp :inspected/at-time meta)))
+(def inspected-init [])
 (def *inspected (atom inspected-init))
 (defn inspected-flush! [] (reset! *inspected inspected-init))
 
-(defn inspect   [inspected value] (conj inspected (with-meta value {:inspected/at-time (cljs.core/system-time)})))
-(defn uninspect [inspected value] (disj inspected value))
+(defn inspect   [inspected value] (if (= -1 (-indexOf inspected value))
+                                    (conj inspected value)
+                                    inspected))
+(defn uninspect [inspected value] (vec (remove #(= % value) inspected)))
 
 (defn inspect!   [value] (swap! *inspected inspect   value) value)
 (defn uninspect! [value] (swap! *inspected uninspect value) value)
 
 (defn toggle-inspect! [value]
   (swap! *inspected (fn [inspected]
-                      (if (contains? inspected value)
-                        (uninspect inspected value)
-                        (inspect inspected value))))
+                      (if (= -1 (-indexOf inspected value))
+                        (inspect inspected value)
+                        (uninspect inspected value))))
   value)
 
 (def ->in?
@@ -93,11 +95,6 @@
                                 (seq? coll-el)
                                 (set? coll-el))
                             (->in? coll-el el))))))))
-
-(def ->inspected?
-  (fn [el]
-    (let [inspected (rum/react *inspected)]
-      (contains? inspected el))))
 
 (def active-inspectable-init {})
 (def *active-inspectable (atom active-inspectable-init))
@@ -130,6 +127,12 @@
       (and (some? el)
            (identical? peeked el)))))
 
+(def ->inspected?
+  (fn [el]
+    (when-let [inspected (not-empty (rum/react *inspected))]
+      (and (some? el)
+           (not= -1 (-indexOf inspected el))))))
+
 (def ->in-inspected?
   (fn [el]
     (let [inspected (rum/react *inspected)]
@@ -137,8 +140,8 @@
 
 (def ->in-peeked?
   (fn [el]
-    (let [peeked (rum/react *peeked)]
-      (or (identical? el peeked)
+    (when-let [peeked (rum/react *peeked)]
+      (or (= (hash el) (hash peeked))
           (and (or (vector? peeked)
                    (set? peeked)
                    (seq? peeked))
