@@ -1,4 +1,24 @@
-(ns hashgraph.app.icons)
+(ns hashgraph.app.icons
+  (:require ["@fortawesome/react-fontawesome" :refer [FontAwesomeIcon] :as fa]
+            ["@fortawesome/free-regular-svg-icons" :as far]
+            ["@fortawesome/free-solid-svg-icons" :as fas]
+            ["@fortawesome/fontawesome-svg-core" :refer [library] :as fa-core]
+            [goog.object]))
+
+(defn icon-key->icon-name [icon-key]
+  (apply str "fa" (-> (name icon-key)
+                      (clojure.string/split #"-")
+                      (->> (map clojure.string/capitalize)))))
+
+(defn icon [icon-style icon-key & [icon-size]]
+  (let [icon-name (icon-key->icon-name icon-key)]
+    (js/React.createElement
+     FontAwesomeIcon
+     #js {:icon (case icon-style
+                  :solid   (goog.object/get fas icon-name)
+                  :regular (goog.object/get far icon-name))
+          :size (or (some-> icon-size name)
+                    "1x")})))
 
 (defn transfer [opts]
   [:svg

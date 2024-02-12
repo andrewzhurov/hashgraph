@@ -2,10 +2,13 @@
   (:require-macros [hashgraph.utils.js-map :as js-map])
   (:require [clojure.set :as set]
             [cognitect.transit :as transit]
+            [garden.core :refer [css]]
+            [garden.units :refer [px]]
             [rum.core :as rum]
             [hashgraph.main :as hg]
             [hashgraph.members :as hg-members]
             [hashgraph.app.view :as hga-view]
+            [hashgraph.app.icons :as hga-icons]
             [hashgraph.app.state :as hga-state]
             [hashgraph.app.events :as hga-events]
             [hashgraph.app.transitions :as hga-transitions]
@@ -38,7 +41,7 @@
                           :played<   '()   ;; on play we'll read from the first when putting to behind ^
                           :rewinded< '() ;; on play we'll read from the first when putting to played ^
                           }))
-#_(log! :playback @*playback)
+#_(utils/log! :playback @*playback)
 
 (defonce *played<   (rum/cursor *playback :played<))
 (defonce *rewinded> (rum/cursor *playback :rewinded>))
@@ -242,22 +245,24 @@
 
 
 (defn viz-scroll-to-event! [evt]
-  (let [evt-pos        (hga-view/evt->y evt)
+  (let [evt-pos            (hga-view/evt->y evt)
         evt-viz-scroll-pos (- evt-pos hga-view/playback-size)]
     (@hga-state/*viz-scroll! evt-viz-scroll-pos :smooth? true)))
 
-(defn play-backwards! []
+(defn rewind-all! []
+  (@hga-state/*viz-scroll! (- hga-view/window-size) :smooth? true))
+
+(defn rewind-once! []
   (if-let [prev-evt (second (reverse @*played<))]
     (viz-scroll-to-event! prev-evt)
-    (@hga-state/*viz-scroll! 0 :smooth? true)))
+    (rewind-all!)))
 
-(defn play-forwards! []
+(defn play-once! []
   (if-let [rewinded-evt (first (not-empty (:rewinded< @*playback)))]
     (viz-scroll-to-event! rewinded-evt)
     (if-let [left-event (first (not-empty @*left<))] ;; better ensure left's are populated
       (viz-scroll-to-event! left-event)
       nil)))
-
 
 (def *playing? (atom false))
 (defn play! []
@@ -282,45 +287,86 @@
 (defn play! []
   (js/requestAnimationFrame
    (fn []
-     (js/setTimeout (fn [] (play-forwards!) (play!))))))
+     (js/setTimeout (fn [] (play-once!) (play!))))))
 
 (def playback-controls
-  [{:description "Load hashgraph playback from disk"
-    :short       "Open"
-    :action      load-playback!}
+  [#_#_{:description "Load hashgraph playback from disk"
+        :short       "Open"
+        :action      load-playback!}
    {:description "Save hashgraph playback to disk"
     :short       "Save to..."
     :action      save-playback!}
-   {:description "Set playback position to start"
-    :short       "<--"
-    :action      #(@hga-state/*viz-scroll! 0)
-    :shortcut    #{:ctrl :->}}
-   {:description "Rewind playback once backwards"
-    :short       "<-"
-    :action      play-backwards!
-    :shortcut    #{:ctrl :shift :->}}
-   {:description "Play"
-    :short       "Play"
-    :action      #(reset! *playing? true)}
-   {:description "Pause"
-    :short       "Pause"
-    :action      #(reset! *playing? false)}
-   {:description "Play next event"
-    :short       "->"
-    :action      play-forwards!
-    :shortcut    #{:ctrl :->}}
-   {:description "Set playback position to end"
-    :short "->>"
-    ;; :action      play-to-end!
-    :shortcut #{:ctrl :shift :<-}}])
 
+   ;; |<--
+   {:id          :rewind-all
+    :description "Set playback position to start"
+    :short       (hga-icons/icon :solid :backward-fast)
+    :action      rewind-all!
+    :shortcut    #{:ctrl :<-}}
+   ;; |<-
+   {:id          :rewind-once
+    :icon        (hga-icons/icon :solid :backward-step)
+    :description "Rewind playback once backwards"
+    :short       "<-"
+    :action      rewind-once!
+    :shortcut    #{:ctrl :shift :<-}}
+   ;; |> ||
+   {:id          :play-pause
+    :action      #(swap! hga-state/*playback-playing? not)
+    :shortcut    #{:ctrl :space}
+    :*state      hga-state/*playback-playing?
+    :on-state    {true {:short "Pause"
+                        :icon  (hga-icons/icon :solid :play)}
+                  false {:short "Play"
+                         :icon (hga-icons/icon :solid :pause)}}}
+   ;; ->|
+   {:id          :play-once
+    :description "Play next event"
+    :short       (hga-icons/icon :solid :forward-step)
+    :action      play-once!
+    :shortcut    #{:ctrl :->}}
+   ;; ->>|
+   {:id          :play-all
+    :description "Set playback position to end"
+    :short       (hga-icons/icon :solid :forward-fast)
+    ;; :action      play-to-end!
+    :shortcut    #{:ctrl :shift :->}}])
+
+(def playback-controls-styles
+  [[:.playback-controls-section {:position        :fixed
+                                 :bottom          (px (+ hga-view/scrollbar-height hga-view/control-margin))
+                                 :left            "0px"
+                                 :right           "0px"
+                                 :display         :flex
+                                 :justify-content :center
+                                 :z-index         100}
+    [:.playback-controls
+     [:.playback-control
+      {:width           "56px"
+       :height          "56px"
+       :display         :inline-flex
+       :justify-content :center
+       :align-items     :center
+       :cursor          :pointer}]]]])
 
 
 (rum/defc playback-controls-view < rum/reactive
+  {:will-mount (fn [state]
+                 (doseq [{:keys [action shortcut]} playback-controls]
+                   )
+                 state)}
   []
-  [:div
-   (for [{:keys [description short action]} playback-controls]
-     [:button {:key short
-               :title description
-               :on-click action}
-      short])])
+  [:<>
+   [:style (css playback-controls-styles)]
+   [:div.playback-controls-section
+    [:div.playback-controls {:class [#_(when (rum/react hga-state/*playback-playing?))]}
+     (for [{:keys [*state on-state] :as playback-control} playback-controls]
+       (let [{:keys [id icon description short action]} (if-not *state
+                                                          playback-control
+                                                          (merge playback-control
+                                                                 (get on-state (rum/react *state))))]
+         [:div.playback-control {:class    [(name id)]
+                                 :key      id
+                                 :title    description
+                                 :on-click action}
+          (or icon short)]))]]])

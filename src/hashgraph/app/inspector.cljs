@@ -6,6 +6,9 @@
    #_[garden.def :refer-macros [defkeyframes]]
    [garden.color :as gc]
    [garden.stylesheet :refer [at-keyframes]]
+   [hashgraph.app.icons :as hga-icons]
+   [hashgraph.app.view :refer [t] :as hga-view]
+   [hashgraph.app.transitions :refer [tt] :as hga-transitions]
    [hashgraph.utils.core
     :refer-macros [defn* l]
     :refer [*parent-log-path* *parent-log-path-logging?* *log-path* *log-path-logging?*
@@ -22,13 +25,13 @@
    [clojure.set :as set]))
 
 #_(type
- (let [tm (transient (hash-map))]
-   (loop [tm* tm
-          nth 2]
-     (if (pos? nth)
-       (let [new-tm* (assoc! tm* nth nth)]
-         (recur new-tm* (dec nth)))
-       tm*))))
+   (let [tm (transient (hash-map))]
+     (loop [tm* tm
+            nth 2]
+       (if (pos? nth)
+         (let [new-tm* (assoc! tm* nth nth)]
+           (recur new-tm* (dec nth)))
+         tm*))))
 
 (def *compact-names? (atom false))
 
@@ -167,30 +170,15 @@
     {:opacity 1}]])
 
 (def inspector-styles
-  [[:#inspector
-    {:width          "100vw"
-     :display        :flex
-     :flex-direction :row
-     ;; :overflow-y     :hidden
-     ;; :overflow-x     :hidden
-     :overflow-y :scroll
-     :overflow-x :scroll
-     :background     "rgba(255,255,255, 0.9)"}]
-   [:.inspector {:display       :flex
+  [[:.inspector {:display       :flex
                  :padding-right "10px"
-                 :width         :fit-content}
-    [:.inspect
-     icon-style
-     [:img {:width "100%"
-            :height "100%"}]]
-    [:.expand
-     icon-style]
-
-    [:table {:border          "1px solid gray"
-             :padding "5px"
+                 :width         :fit-content
+                 :height        :fit-content}
+    [:table {:border   "1px solid gray"
+             :padding  "5px"
              :position :relative ;; for sticky keys
-             :height :fit-content
-             :width :fit-content
+             :height   :fit-content
+             :width    :fit-content
              ;; :border-collapse :collapse
              }
      [:.table-key {:position         :sticky
@@ -202,12 +190,6 @@
       [:.table-key {:left "0px"}]]
      [:&.vertical
       [:.table-key {:top "0px"}]]
-
-     #_#_#_
-     [:tr {:display :block
-           :float   :left}]
-     [:th {:display :block}]
-     [:td {:display :block}]
 
      [:tbody {:vertical-align :top}]
      [:tr {:border-bottom "1px solid gray"
@@ -221,21 +203,21 @@
     [:.map {:display     :flex
             :white-space :nowrap
             :align-items :top}
-     [:.kv {:display :flex
+     [:.kv {:display     :flex
             :white-space :nowrap
             :align-items :top}
       [:.k {:margin-right "10px"}]
       [:.v {}]]]
-    [:.object {:display :flex
+
+    [:.object {:display     :flex
                :white-space :nowrap
                :align-items :top}]
 
-    [:.seqable {:display :flex
+    [:.seqable {:display     :flex
                 :white-space :nowrap
-                :align-items :top}
-     ]
+                :align-items :top}]
 
-    [:.kw {:display :flex
+    [:.kw {:display     :flex
            :white-space :nowrap}
      [:.delim {:color "black"}]
      [:.ns {:color "darkcyan"}]
@@ -250,14 +232,14 @@
     [:.trace
      [:.trace-info-wrapper {:background-color "orange"
                             :border           "1px solid white"}
-      [:.trace-info {:width       :fit-content
-                     :max-width   "100%"
-                     :position    :sticky
-                     :left        0
-                     :overflow-x  :hidden
-                     :display     :flex
-                     :align-items :top
-                     :padding-top "10px"
+      [:.trace-info {:width          :fit-content
+                     :max-width      "100%"
+                     :position       :sticky
+                     :left           0
+                     :overflow-x     :hidden
+                     :display        :flex
+                     :align-items    :top
+                     :padding-top    "10px"
                      :padding-bottom "10px"}
        [:.fn-name {:padding-left "10px"}]
        [:.fn-args {}]
@@ -271,31 +253,13 @@
                    :-ms-user-select     :none ;; /* IE 10+ */
                    :-moz-user-select    :none ;; /* Gecko (Firefox) */
                    :-webkit-user-select :none ;; /
-                   :transition "0.4s"}
+                   :transition          "background-color 0.4s"}
     [:&.inspected
      {:background-color "rgba(0,0,0,0.05)"}]
     [:&.peeked
-     {:background-color "rgba(0,0,0,0.1)"
-      #_#_:scale        "1.5"}]]])
+     {:background-color "rgba(0,0,0,0.1)"}]]])
 
-#_
-(rum/defc inspect < rum/static rum/reactive
-  [value]
-  (let [being-inspected? (contains? (rum/react *inspected) value)
-        being-peeked?    (contains? (rum/react *peeked) value)]
-    [:div.inspect
-     {:class [(when (or being-inspected? being-peeked?) "active")]
-      :on-click #(do (.stopPropagation %)
-                     (swap! *inspected (fn [inspected] (if (contains? inspected value)
-                                                         (disj inspected value)
-                                                         (conj inspected value)))))
-      :on-mouse-enter #(do (.stopPropagation %)
-                           (swap! *peeked conj value))
-      :on-mouse-leave #(do (.stopPropagation %)
-                           (swap! *peeked disj value))}
-     (if being-inspected?
-       [:img {:src "https://www.svgrepo.com/show/508054/eye-off.svg"}]
-       [:img {:src "https://www.svgrepo.com/show/508052/eye.svg"}])]))
+
 
 (def peek-key :ctrl)
 (def inspect-key :ctrl)
@@ -315,13 +279,12 @@
                           (.preventDefault %)
                           (.stopPropagation %)
                           (toggle-inspect! el))
-       :class          ["inspectable"
-                        (when (and analysis?
-                                   (not (->in-inspected? el))
-                                   (not (->in-peeked? el)))
-                          "dimm")
-                        (when (and analysis? (->inspected? el)) "inspected")
-                        (when (and analysis? (->peeked? el)) "peeked")]})))
+       :class          (cond-> ["inspectable"]
+                         analysis? (into ["analysis"
+                                          (when (->in-inspected? el) "in-inspected")
+                                          (when (->in-peeked? el) "in-peeked")
+                                          (when (->inspected? el) "inspected")
+                                          (when (->peeked? el) "peeked")]))})))
 
 
 (def ms-keys-orders
@@ -350,8 +313,9 @@
 
 (def ->m-type
   (fn [value]
-    (cond (and (map? value) (-> value keys first keyword?))
-          (-> value keys first namespace keyword))))
+    (or (cond (and (map? value) (-> value keys first keyword?))
+              (-> value keys first namespace keyword))
+        :plain)))
 
 (def *a (atom {}))
 (let [m1 (range 100000)]
@@ -386,7 +350,7 @@
 
         [sort-by-key sort-direction] (or @*sort-by-key->sort-direction
                                          default-sort-by-key->sort-direction)
-        sort-by! (fn [k] (swap! *sort-by-key->sort-direction
+        sort-by!                     (fn [k] (swap! *sort-by-key->sort-direction
                                 (fn [sort-by-key->sort-direction]
                                   (case sort-by-key->sort-direction
                                     [k :desc]
@@ -399,31 +363,45 @@
 
         ms (cond->> ms
              sort-by-key (sort-by sort-by-key)
-             (some-> sort-direction (= :asc)) reverse)]
+             (some-> sort-direction (= :asc)) reverse)
+        opts (assoc opts :hide-ns? true)]
 
     (if horizontal?
       [:table.horizontal {:on-click flip!}
-       (for [ms-key ordered-ms-keys]
-         (let [id       (hash ms-key)
-               new-opts (update opts :path conj ms-key)
-               ms-vals  (map #(get % ms-key) ms)]
-           [:tr {:key id}
-            [:td.table-key (merge {:key id}
-                                  (inspectable ms-vals new-opts))
-             (inspector ms-key new-opts)]
-            (->> ms
-                 (map-indexed
-                  (fn [idx m]
-                    (let [id       (hash m)
-                          new-opts (update new-opts :path conj idx)
-                          m-val    (get m ms-key utils/lookup-sentinel)]
-                      [:td {:key id}
-                       (when (not (identical? m-val utils/lookup-sentinel))
-                         (inspector m-val new-opts))]))))]))]
+       [:thead
+        [:th.table-key (inspector ms-type)]
+        (->> ms
+             (map-indexed
+              (fn [idx m]
+                (let [id (hash m)]
+                  [:th (merge {:key id}
+                              (inspectable m))
+                   (inc idx)]))))]
+
+       [:tbody
+        (for [ms-key ordered-ms-keys]
+          (let [id       (hash ms-key)
+                new-opts (update opts :path conj ms-key)
+                ms-vals  (map #(get % ms-key) ms)]
+            [:tr {:key id}
+             [:td.table-key (merge {:key id}
+                                   (inspectable ms-vals new-opts))
+              (inspector ms-key new-opts)]
+             (->> ms
+                  (map-indexed
+                   (fn [idx m]
+                     (let [id       (hash m)
+                           new-opts (update new-opts :path conj idx)
+                           m-val    (get m ms-key utils/lookup-sentinel)]
+                       [:td {:key id}
+                        (when (not (identical? m-val utils/lookup-sentinel))
+                          (inspector m-val new-opts))]))))]))]]
 
       [:table.vertical {:on-click flip!}
        [:thead
         [:tr
+         [:th.table-key
+          (inspector ms-type)]
          (for [ms-key ordered-ms-keys]
            (let [id          (hash ms-key)
                  new-opts    (update opts :path conj id)
@@ -441,12 +419,14 @@
              (map-indexed
               (fn [idx m]
                 (let [new-opts (update opts :path conj idx)]
-                  [:tr (merge {:key idx} (inspectable m new-opts))
+                  [:tr {:key (hash m)}
+                   [:td (inspectable m new-opts)
+                    (inc idx)]
                    (->> ordered-ms-keys
                         (map-indexed
                          (fn [idx ms-key]
                            (let [new-opts (update opts :path conj idx)
-                                 m-val (get m ms-key)]
+                                 m-val    (get m ms-key)]
                              [:td {:key idx}
                               (when (contains? m ms-key)
                                 (inspector m-val new-opts))]))))]))))]])))
@@ -487,7 +467,7 @@
 
 (rum/defcs inspector-view-trace-flame < rum/static rum/reactive (rum/local 1 ::*trace-scale) (rum/local false ::*input-key)
   [{::keys [*trace-scale *input-key]} trace opts]
-  (let [trace-scale @*trace-scale
+  (let [trace-scale  @*trace-scale
         trace-scale! #(do (.stopPropagation %)
                           (swap! *trace-scale
                                  (fn [scale]
@@ -495,7 +475,7 @@
                                          (> scale 1)            1
                                          :else                  2)))
                           (swap! *input-key not))
-        opts (assoc opts :trace-scale trace-scale)]
+        opts         (assoc opts :trace-scale trace-scale)]
     [:div {:on-click trace-scale!}
      [:input {:key           @*input-key
               :type          :range
@@ -535,51 +515,73 @@
    (for [cr (take-while some? (iterate :concluded-round/prev-concluded-round cr))]
      (inspector-view-map cr))])
 
+(defn coll->groups [coll]
+  (->> coll
+       (reduce (fn [[?last-group & rest-groups :as groups] el]
+                 (let [?el-ns (when (-> el map?)
+                                (or (and (some-> el keys first keyword?)
+                                         (some-> el keys first namespace))
+                                    :no-ns))]
+                   (cond (nil? ?el-ns)                      (conj groups {:group-els [el]})
+                         (= (:group-ns ?last-group) ?el-ns) (conj rest-groups (update ?last-group :group-els conj el))
+                         :else
+                         (conj groups {:group-ns  ?el-ns
+                                       :group-els [el]}))))
+               '())
+       reverse))
 
 (rum/defcs inspector-view-seqable < rum/static rum/reactive (rum/local true ::*table-view?)
   [{::keys [*table-view?]} s {:keys [path expanded-depth] :as opts}]
   (let [[bracket-start bracket-end]
-         (cond (seq? s)    ["(" ")"]
-               (vector? s) ["[" "]"]
-               (set? s)    ["#{" "}"])
+        (cond (seq? s)    ["(" ")"]
+              (vector? s) ["[" "]"]
+              (set? s)    ["#{" "}"])
+
+        show-dt-sym? (not (::hide-dt-sym? (meta s)))
 
         resolved-s (->> s (mapv (fn [s-el] (if (atomic? s-el)
                                              (rum/react s-el)  ;; losing @ view sign here
-                                             s-el))))]
+                                             s-el))))
+        groups     (coll->groups resolved-s)]
     [:div.seqable (merge-attr-maps (inspectable s opts)
                                    {:on-click #(when (key-mod? :alt)
                                                  (.stopPropagation %)
                                                  (swap! *table-view? not))})
-     [:div.dt-sym bracket-start]
+     (when show-dt-sym?
+       [:div.dt-sym bracket-start])
+     (cond (empty? resolved-s)
+           ""
 
-     (or (and (>= (count path) expanded-depth)
-              (or (and (not-empty resolved-s)
-                       [:div.collapsed-content-sym "..."])
-                  ""))
-         (and (->> resolved-s (every? map?))
-              @*table-view?
-              ;; some keys intersect
-              #_(->> resolved-s (map (comp set keys)) (apply set/intersection) (not-empty))
-              (for [[_ks ms-group] (->> resolved-s (group-by (fn [m] (let [?key (first (first m))]
-                                                                       (when (keyword? ?key) (namespace ?key))))))]
-                (table-view ms-group opts)))
-         (->> resolved-s (map-indexed (fn [idx s-el]
-                                        ;; conjing path leads to toggle between unfolded table and folded elements, if key intersection enabled ^
-                                        (let [opts (update opts :path conj idx)]
-                                          (rum/with-key
-                                            (inspector s-el opts)
-                                            idx))))))
+           (and (>= (count path) expanded-depth))
+           [:div.collapsed-content-sym "..."]
 
-     [:div.dt-sym bracket-end]]))
+           :else ;; show elements
+           (for [{:keys [group-ns group-els]} groups]
+             (if group-ns
+               (table-view group-els opts)
+               (->> group-els
+                    (map-indexed
+                     (fn [idx s-el]
+                       (let [opts (-> opts
+                                      (update :path conj idx)
+                                      (update :expanded-depth inc))]
+                         (rum/with-key
+                           (inspector s-el opts)
+                           idx))))))))
+
+     (when show-dt-sym?
+       [:div.dt-sym bracket-end])]))
 
 (rum/defc inspector-view-keyword < rum/static
-  [kw]
+  [kw opts]
   [:div.kw
-   [:div.delim ":"]
-   (when-let [namespace (namespace kw)]
+   (when-not (:hide-ns? opts)
      [:<>
-      [:div.ns namespace]
-      [:div.delim "/"]])
+      [:div.delim ":"]
+      (when-let [namespace (namespace kw)]
+        [:<>
+         [:div.ns namespace]
+         [:div.delim "/"]])])
    [:div.name (name kw)]])
 
 (rum/defc inspector-view-boolean < rum/static
@@ -605,6 +607,11 @@
   [:div.symbol {:title (str sym)} (cond-> (str sym)
                                     (rum/react *compact-names?) utils/name->compact-name)])
 
+(rum/defc inspector-view-string < rum/static
+  [str opts]
+  [:div.string
+   str])
+
 (rum/defc inspector-view-default < rum/static
   [any]
   (pr-str any))
@@ -617,12 +624,14 @@
            [(.-clientWidth dom-node) (.-clientHeight dom-node) (not signal)])))
 
 (defn ->in-view? [dom-node]
+  true
+  #_
   (when-let [[view-width view-height _signal] (rum/react *inspector-wrapper-view-bounds)]
     (let [bounding-rect (.getBoundingClientRect dom-node) ;; returns relative to scrolled viewport coords https://developer.mozilla.org/en-US/docs/Web/API/Element/getBoundingClientRect
-          rel-x     (.-x bounding-rect)
-          rel-y     (.-y bounding-rect)
-          rel-x-end (+ rel-x (.-width bounding-rect))
-          rel-y-end (+ rel-y (.-height bounding-rect))]
+          rel-x         (.-x bounding-rect)
+          rel-y         (.-y bounding-rect)
+          rel-x-end     (+ rel-x (.-width bounding-rect))
+          rel-y-end     (+ rel-y (.-height bounding-rect))]
       ;; in-view?
       (not
        ;; not-in-view?
@@ -660,11 +669,11 @@
   [{::keys [*local-expanded-depth *dom-node] :as state} value {:keys [expanded-depth path in-view?] :as opts}]
   (let [current-expanded-depth (or @*local-expanded-depth
                                    expanded-depth)
-        in-view? (cond
-                   (= in-view? false) false
-                   (nil? @*dom-node)  false
-                   :else (->in-view? @*dom-node))
-        new-opts (-> opts
+        in-view?               (cond
+                                 (= in-view? false) false
+                                 (nil? @*dom-node)  false
+                                 :else              (->in-view? @*dom-node))
+        new-opts               (-> opts
                      (assoc :expanded-depth current-expanded-depth
                             :in-view? in-view?))]
     [:div.inspector (if (or (seqable? value)
@@ -674,14 +683,18 @@
                                                                      (cond (key-mod? enhance-key)
                                                                            (inc current-expanded-depth)
 
-                                                                           (nil? local-expanded-depth)
+                                                                           (or (nil? local-expanded-depth)
+                                                                               (= local-expanded-depth (count path)))
                                                                            (inc (count path))
 
                                                                            :else
-                                                                           nil))))}
+                                                                           (count path)))))}
                       {})
      (cond #_#_ (and (map? value) (:concluded-round/r value))
            (inspector-view-cr value)
+
+           (string? value)
+           (inspector-view-string value new-opts)
 
            (keyword? value)
            (inspector-view-keyword value new-opts)
@@ -712,7 +725,7 @@
 (defn* ^{:memoizing {:recur-by   (fn [[_ & rest-traces]] [rest-traces]) ;; warmup cache on cold start to escape max call stack exceeded due to deep uncached recursion
                      :recur-stop empty?
                      :only-last? true}
-         :tracing {:enabled? false}}
+         :tracing   {:enabled? false}}
   traces->fn-profiles*
   [[{:trace/keys [fn-name time] :as trace} & rest-traces]]
   (if (nil? trace)
@@ -720,17 +733,17 @@
     (let [prev-fn-profiles (traces->fn-profiles* rest-traces)]
       (-> prev-fn-profiles
           (update fn-name (fn [{:fn-profile/keys [_fn-name times total-time max-time min-time medium-time medium-time-delta-total medium-time-delta-times] :as fn-profile}]
-                            (let [new-total-time                (+ total-time time)
-                                  new-times                     (inc times)
-                                  new-medium-time               (/ new-total-time new-times)
-                                  ?new-medium-time-delta        (when medium-time
+                            (let [new-total-time                 (+ total-time time)
+                                  new-times                      (inc times)
+                                  new-medium-time                (/ new-total-time new-times)
+                                  ?new-medium-time-delta         (when medium-time
                                                                   (- medium-time new-medium-time))
-                                  new-medium-time-delta-total   (+ medium-time-delta-total ?new-medium-time-delta)
-                                  new-medium-delta-times        (cond-> medium-time-delta-times
-                                                                  ?new-medium-time-delta inc)
+                                  new-medium-time-delta-total    (+ medium-time-delta-total ?new-medium-time-delta)
+                                  new-medium-delta-times         (cond-> medium-time-delta-times
+                                                                   ?new-medium-time-delta inc)
                                   ?new-medium-time-deltas-medium (when (> new-medium-delta-times 0)
-                                                                  (/ new-medium-time-delta-total
-                                                                     new-medium-delta-times))]
+                                                                   (/ new-medium-time-delta-total
+                                                                      new-medium-delta-times))]
                               (-> fn-profile
                                   (assoc :fn-profile/times new-times)
                                   (assoc :fn-profile/total-time new-total-time)
@@ -741,9 +754,9 @@
                                   (cond->
                                       (or (nil? min-time)
                                           (< time min-time))       (assoc :fn-profile/min-time time)
-                                      (> time max-time)             (-> (assoc  :fn-profile/max-time time)
+                                      (> time max-time)              (-> (assoc  :fn-profile/max-time time)
                                                                         (assoc  :fn-profile/max-time-trace trace))
-                                      ?new-medium-time-delta (assoc :fn-profile/medium-time-delta ?new-medium-time-delta)
+                                      ?new-medium-time-delta         (assoc :fn-profile/medium-time-delta ?new-medium-time-delta)
                                       ?new-medium-time-deltas-medium (assoc :fn-profile/medium-time-deltas-medium ?new-medium-time-deltas-medium))))))))))
 
 (def *fn-profiles (lazy-derived-atom [utils/*traces] ::*fn-profiles
@@ -760,41 +773,131 @@
                                               last
                                               :fn-profile/max-time-trace))))
 
-(rum/defcs view < rum/static rum/reactive (rum/local 0 ::*open-depth)
+(def m-types
+  [:event
+   :tx
+   :round
+   :vote
+   :concluded-voting
+   :concluded-round
+   :received-event
+   :plain])
+
+(defn m-type->order [m-type]
+  (let [idx (-indexOf m-types m-type)]
+    (if (not= -1 idx)
+      idx
+      (do (js/console.warn "m-type order is unset for" m-type)
+          100))))
+
+(def bin-size (/ hga-view/window-size (count m-types)))
+
+(def bins-view-styles
+  [[:.bins-view
+    [:.bins {:width          "100%"
+             :display        :inline-flex
+             :flex-direction :row}
+     [:.bin {:width      "0px" ;; so flex items are of the same size, with no regard to their content
+             :max-height "100%"
+             :flex       "1 1 0px"
+             :padding    "5px"
+             :opacity    1
+             ;; :transition (t :opacity (/ tt 2)) ;; looks half-baked without transition on un-peek
+             }
+      [:&.empty {:opacity 0}]
+      [:.inspector {:padding "0px"}]
+      [:.dt-sym {:padding "0px"}]
+      [:>.inspector {:width               :fit-content
+                     :max-width           "100%"
+                     :max-height          "100%"
+                     :margin              "0px"
+                     :padding             "0px"
+                     :box-sizing          :border-box
+                     :border              "1px solid gray"
+                     :border-radius       hga-view/border-radius
+                     :overflow-x          :auto
+                     :overflow-y          :auto
+                     :overscroll-behavior :contain
+                     :scrollbar-width     :thin}
+       [:>.seqable {:width     "100%"
+                    :max-width "100%"}
+        [:>table {:padding "5px"
+                  :margin  "0px"
+                  :border  :none}]]]]]]])
+
+(rum/defc bins-view < rum/static rum/reactive
+  []
+  [:div.bins-view
+   [:style (css bins-view-styles)]
+   [:style (css inspector-styles)]
+   [:div.bins
+    (let [inspected          (rum/react *inspected)
+          ?peeked            (rum/react *peeked)
+          inspectable+peeked (if (nil? ?peeked)
+                               inspected
+                               (inspect inspected ?peeked))
+          flattened-distinct (-> inspectable+peeked
+                                 utils/flatten-all
+                                 distinct)]
+      (when (not-empty flattened-distinct)
+        (let [bins (->> flattened-distinct
+                        (group-by ->m-type))]
+          (for [m-type m-types]
+            (let [bin-items (get bins m-type)]
+              [:div.bin {:class [(when (empty? bin-items) "empty")]}
+               (when (not-empty bin-items)
+                 [:<>
+                  #_
+                  [:button.clean {:on-click inspected-flush!
+                                  :title    "Clean"}
+                   (hga-icons/icon :solid :trash)]
+                  (inspector (with-meta bin-items {::hide-dt-sym? true}) {:expanded-depth 1
+                                                                          :in-view?       true})])])))))]])
+
+(def debug-inspector-view-styles
+  [[:.debug-inspector
+    {:width          "50vw"
+     :display        :flex
+     :flex-direction :row
+     :position       :fixed
+     :left           "0px"
+     :top            "0px"
+     :bottom         "0px"
+     :overflow-y     :auto
+     :overflow-x     :auto
+     :background     "rgba(255,255,255, 0.9)"}
+    [:button.clean {:width           "18px"
+                    :height          "18px"
+                    :min-width       "18px"
+                    :min-height      "18px"
+                    :display         :inline-flex
+                    :justify-content :center
+                    :align-items     :center
+                    :margin-left     "5px"}]]])
+
+(rum/defcs debug-view < rum/static rum/reactive (rum/local 0 ::*open-depth)
   {:did-mount (fn [state]
                 (let [dom-node (rum/dom-node state)]
                   (set-inspector-wrapper-view-bounds! dom-node)
                   (assoc state ::on-scroll-end #(set-inspector-wrapper-view-bounds! dom-node))))}
   [{::keys [*open-depth on-scroll-end] :as state}]
   (let [opts {:expanded-depth @*open-depth :path []}]
-    [:div#inspector {:on-scroll (debounce 100 on-scroll-end) ;; TODO only use in browsers that do not support :on-scroll-end event
-                     }
+    [:div.debug-inspector {:on-scroll (debounce 100 on-scroll-end) ;; TODO only use in browsers that do not support :on-scroll-end event
+                           }
+     [:style (css debug-inspector-view-styles)]
      [:style (css inspector-styles)]
      [:div.logged "Logged"]
-     #_[:div.controls
-      [:button {:on-click #(log-flush!)} "flush"]
+     [:div.controls
+      [:button {:on-click #(utils/log-flush!)} "flush"]
       [:input {:type          :range
                :min           0
                :max           10
                :default-value @*open-depth
                :on-change     (debounce 16 #(reset! *open-depth (-> % .-target .-value)))}]]
-
      (inspector (rum/react utils/*log) opts)
 
      [:div.fn-profiles "Fn profiles"]
      (inspector *fn-profiles opts)
 
      [:div.max-time-trace "Max time trace"]
-     (inspector *max-time-trace opts)
-
-     (when-let [inspected (not-empty (rum/react *inspected))]
-       [:<>
-        [:div.inspected "Inspected"]
-        [:div [:button {:on-click inspected-flush!} "flush"]]
-        (inspector inspected (assoc opts :expanded-depth 1))])
-
-
-     (when-let [peeked (rum/react *peeked)]
-       [:<>
-        [:div.peeked "Peeked"]
-        (inspector peeked (assoc opts :expanded-depth 1))])]))
+     (inspector *max-time-trace opts)]))

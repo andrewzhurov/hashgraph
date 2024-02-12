@@ -6,7 +6,6 @@
             [hashgraph.members :as hg-members]
             [hashgraph.utils.core :refer-macros [defn* defnm defnml l cl] :refer [*mem* *from-mem*]]
             [hashgraph.utils2 :refer-macros [td time3]]
-            [hashgraph.app.inspector :as hga-inspector]
             [taoensso.timbre :refer-macros [spy] :refer [log info]]
             [taoensso.tufte :as tufte :refer [defnp fnp p pspy profiled profile]]
             [clojure.set :refer [union] :as set]))

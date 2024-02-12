@@ -1,8 +1,11 @@
 (ns hashgraph.app.view
-  (:require [hashgraph.members :as hg-members]
-            [hashgraph.utils.core :refer [log!] :refer-macros [l letl]]))
+  (:require [cljs.math :refer [floor ceil]]
+            [clojure.test :refer [deftest testing is are]]
+            [hashgraph.members :as hg-members]
+            [hashgraph.utils.core :refer [log!] :refer-macros [l letl] :as utils]))
 
 (def view-mode-horizontal? true)
+(def border-radius "6px")
 
 (def window-height js/window.innerHeight)
 (def window-width js/window.innerWidth)
@@ -34,27 +37,28 @@
       (def y2 :x2)
       (def cy :cx)))
 
+(def control-icon-size 36)
+(def control-size 56)
+(def scrollbar-height 15)
+(def control-margin 5)
 
-(def evt-offset (+ evt-s sp-padding))
-(def members-padding-y sp-padding)
+(def evt-offset (ceil (+ evt-s sp-padding)))
 (def avatar-size 40)
-(def members-height (+ members-padding-y avatar-size members-padding-y))
+
+(def members-height 66 #_(+ members-padding-y avatar-size members-padding-y))
+(def members-padding-y (-> members-height (- avatar-size) (/ 2)))
 
 (def load-area-size (+ sp-padding evt-s))
 (def after-viz-buffer-size (* 35 evt-offset))
-(def playback-size (-> window-size
-                       (- members-padding-y avatar-size members-padding-y load-area-size)))
+(def playback-size (ceil (-> window-size
+                             (- members-padding-y avatar-size members-padding-y load-area-size))))
 
 (def wit-r (* 2 evt-r))
 (def wit-s (* 2 wit-r))
-(def evt-initial-offset-y hgs-padding)
+(def evt-initial-offset-y (ceil hgs-padding))
 
-(def controls-icon-size 36)
 
-(def vote-r (-> wit-r
-                     (- (-> wit-r
-                            (- evt-r)
-                            (/ 2)))))
+(def vote-r evt-r)
 (def vote-circumferance (* 2 js/Math.PI vote-r))
 #_(def vote-circumferance
   (memoize
@@ -63,7 +67,7 @@
        (-> vote-circumferance
            (/ hg/total-stake)
            (* (:member/stake member)))))))
-(def vote-stroke-width (/ vote-r 2))
+(def vote-stroke-width (+ vote-r vote-r))
 
 (def idx->x
   (fn [idx]

@@ -1,10 +1,12 @@
 (ns hashgraph.app.page
-  (:require-macros [hashgraph.utils.js-map :as js-map])
+  (:require-macros [hashgraph.utils.js-map :as js-map]
+                   [hashgraph.app.inspector :refer [inspectable*]])
   (:require
    [clojure.string :as str]
    [clojure.set :as set]
    [cljs.math :refer [round floor ceil pow]]
    [garden.core :as garden]
+   [garden.selectors :as gs]
    [garden.stylesheet :refer [at-keyframes]]
    [garden.color :as gc]
    [garden.units :refer [px]]
@@ -16,10 +18,10 @@
 
    [hashgraph.app.state :as hga-state]
    [hashgraph.app.events :as hga-events]
-   [hashgraph.app.view :as hga-view]
+   [hashgraph.app.view :refer [t] :as hga-view]
    [hashgraph.app.members :as hga-members]
    [hashgraph.app.playback :as hga-playback]
-   [hashgraph.app.transitions :as hga-transitions]
+   [hashgraph.app.transitions :refer [tt] :as hga-transitions]
    [hashgraph.app.infini-events :as hga-infini-events]
    [hashgraph.app.analysis :as hga-analysis]
    [hashgraph.app.tutorial :as hga-tutorial]
@@ -30,7 +32,7 @@
    [hashgraph.app.utils :as hga-utils]
    [hashgraph.utils.core
     :refer [log! merge-attr-maps color-rgba-str timing *->time*]
-    :refer-macros [defn* l letl]
+    :refer-macros [defn* l letl merge-attr-maps*]
     :as utils]
    [hashgraph.main :as hg]
    [hashgraph.members :as hg-members]))
@@ -53,106 +55,126 @@
 
 (def styles-horizontal-mode
   (into
-   [[:body {:overflow-y :hidden}]
-    [:#root {:overflow-y :hidden}]
-    [:#root-view {:overflow-y :hidden}]
+   [
     [:#page-view {:flex-direction :row
                   :overflow-x     :scroll
                   :overflow-y     :hidden}]
 
-    (let [flex-equaly "1 1 0"]
-      [:#viz-section {:height         "100vh"
-                      :display        :flex
-                      :flex-direction :column}
-       [:#tutorial {:flex flex-equaly}]
-       [:#viz {:flex flex-equaly}
-        [:#render {:transition "width 0.5s"}]]
-       [:#inspector {:flex     flex-equaly
-                     :position :sticky
-                     :left     "0px"
-                     :width    "100vw"}]
+    [:#viz-section {:height         "100vh"
+                    :display        :flex
+                    :flex-direction :column}
+     [:>* {:flex "1 1 0"}]
+     [:.bins-view {:position :sticky
+                   :left     "0px"
+                   :width    "100vw"}
+      (let [controls-end-height (+ hga-view/scrollbar-height hga-view/control-margin hga-view/control-size hga-view/control-margin)]
+        [:.bins {:max-height (str "calc((100vh / 3) - " hga-view/scrollbar-height "px)")}
+         #_{:max-height (str "calc((100vh / 3) - " controls-end-height "px)")}])]
 
-       [:#viz {:position :relative}
-        ]])]
+     [:#viz
+      [:#render {:transition "width 0.5s"}]]
+     [:#inspector {:position :sticky
+                   :left     "0px"
+                   :width    "100vw"}]
+
+     [:#viz {:position :relative}
+      ]]]
    hga-members/styles-horizontal-mode))
 
+(def control-size-style
+  {:max-width  (px hga-view/control-size)
+   :max-height (px hga-view/control-size)
+   :width      (px hga-view/control-size)
+   :height     (px hga-view/control-size)})
+
 (def styles
-  [(at-keyframes "appear"
-                 [:from {:transform "scale(0)"}]
-                 [:to {:transform "scale(1)"}])
+  [(at-keyframes "fade-in"
+                 [:from {:opacity 0}]
+                 [:to   {:opacity 1}])
+
+   [:button {:border           :none
+             :padding          "0px"
+             :background-color :unset
+             :width            :fit-content
+             :height           :fit-content
+             :cursor           :pointer}]
 
    [:html {}]
-   [:body {:margin "0px"}]
-   [:#root]
-   [:#root-view]
+   [:body {:overflow-y :hidden
+           :overflow-x :hidden
+           :margin "0px"}]
+   [:#root {:overflow-y :hidden
+            :overflow-x :hidden}]
+   [:#root-view {:overflow-y :hidden
+                 :overflow-x :hidden}]
 
    [:#page-view {:height  "100vh"
                  :width   "100vw"
                  :display :flex}]
 
-   [:#controls {:width            "36px"
-                :height           "36px"
-                :position         :fixed
-                :top              "5px"
-                :right            "5px"
-                :padding          "4px"
-                :border           "1px solid lightgray"
-                :border-radius    "4px"
-                :background-color "white"}
-    [:.toggler {:width           (px hga-view/controls-icon-size)
-                :height          (px hga-view/controls-icon-size)
-                :background      "url('https://www.svgrepo.com/show/532195/menu.svg')"
-                :background-size :cover
-                :border          :none
-                :cursor          :pointer
-                :padding         "0px"}]]
+   [:#controls]
+   [:#menu-controls (merge control-size-style
+                           {:position         :fixed
+                            :bottom           (px (+ hga-view/scrollbar-height hga-view/control-margin))
+                            :right            (px hga-view/control-margin)
+                            :background-color "white"
+                            :z-index          110})
+    [:#menu-controls-toggler (merge control-size-style
+                                    {:display         :inline-flex
+                                     :justify-content :center
+                                     :align-items     :center})]]
 
    [:#home {:width      "100vw"
             :height     "100vh"
             :min-width  "100vw"
             :min-height "100vh"}]
 
-   #_
-   [:.members {:position         :absolute
-               :bottom           "0px"
-               :height           (str hga-view/members-height "px")
-               :background-color "rgba(255,255,255,0.5)"}
-    [:.member {:position       :absolute
-               :transform      "translateX(-50%)"
-               :display        :flex
-               :flex-direction :column
-               :align-items    :center
-               :transition     "opacity 0.4s"
-               :opacity        0}
-     [:&.active {:opacity 1}]]]
-
    [:#viz
     [:.inspectable {:transform-box    :fill-box
-                    :transform-origin :center}
-     [:&.peeked {:scale 1.3}]
-     [:&.dimm {:opacity 0.33}]]]
+                    :transform-origin :center
+                    :transition (t :scale (/ tt 2) :opacity (/ tt 2))}
+     [:&.peeked {:scale 1.3
+                 :filter "drop-shadow(0px 0px 2px rgb(0 0 0 / 0.4))"}]
+     [(gs/& :.analysis (gs/not :.in-peeked) (gs/not :.in-inspected)) {:opacity 0.33}]]]
 
-   [:.event {}
-    [:.witness {:opacity 0.30}]
+   [:.event-info {;; :filter "drop-shadow(0px 0px 2px rgb(0 0 0 / 0.4))"
+                  }
+    #_[:* {:transition-timing-function :linear}]
+    [:.witness {:stroke       :black
+                :stroke-width 1
+                :fill         :transparent
+                :opacity      0
+                :r            hga-view/evt-r
+                :transition   (t :opacity tt
+                                 :r tt)}
+     [:&.absent {}]
+     [:&.present {:opacity 0.33
+                  :r       hga-view/wit-r}
+      [:&.final {:opacity 1}]]]
 
-    [:.round {:color     "gray"
-              :font-size "14px"}]
+    [:.round-number {:font-size (px 14)
+                     :fill :gray
+                     :transition (t :fill tt)}
+     [:&.final {:fill :black}]]
 
-    [:.stake-map {:opacity 0.33}]
-    [:.votes {:opacity 0.66}
-     [:.vote {}]]
-
-    [:&.r-final
-     [:.witness {:opacity 1}]
-     [:.round {:color       "black"
-               :font-size   "18px"
-               :font-weight :bold}]]
-
+    [:.votes {:opacity    0
+              :transition (t :opacity tt)
+              :display    :none}
+     [:&.present {:opacity 1
+                  :display :block}]
+     [:.vote {:transition (t :stroke tt)}]]
     [:&.r-concluded
      [:.votes {:opacity 1}]]]])
 
 (def key-fn-by-hash {:key-fn (fn [arg] (-hash arg))})
 (def static-by-hash {:should-update (fn [old-state new-state]
+                                      #_(log! [:should-update] {:event         (:event-info/event (first (:rum/args old-state)))
+                                                              :should-update (not= (-hash (first (:rum/args old-state)))
+                                                                                   (-hash (first (:rum/args new-state))))
+                                                              :old-hash      (-hash (first (:rum/args old-state)))
+                                                              :new-hash      (-hash (first (:rum/args new-state)))
+                                                              :old-args      (first (:rum/args old-state))
+                                                              :new-args      (first (:rum/args new-state))})
                                       (not= (-hash (first (:rum/args old-state)))
                                             (-hash (first (:rum/args new-state)))))})
 
@@ -174,8 +196,30 @@
              end-vote-circumferance                  (+ start-vote-circumferance vote-circumferance)]
          [start-vote-circumferance vote-circumferance end-vote-circumferance])))))
 
-(def event-view-key-fn {:key-fn (fn [{:event-info/keys [event]}] (-hash event))})
 
+(rum/defc event-round-view < rum/static rum/reactive
+  [{:round/keys [number final?] :as round}]
+  [:g (inspectable round)
+   [:text.round-number {:class [(when final? "final")]
+                        :x (/ hga-view/wit-r 2)
+                        :y (/ (- hga-view/wit-r) 2)}
+    number]])
+
+(rum/defc event-tx-view < rum/static rum/reactive
+  [{:tx/keys [fn-id args]}]
+  (case fn-id
+    :share-stake
+    (hga-icons/transfer {:width     hga-view/evt-s
+                         :height    hga-view/evt-s
+                         :x         (- hga-view/evt-r)
+                         :y         (- hga-view/evt-r)})))
+
+(defn translate-based-on-view-mode [x y]
+  (if hga-view/view-mode-horizontal?
+    (str "translate(" y "px," x "px)")
+    (str "translate(" x "px," y "px)")))
+
+(def event-view-key-fn {:key-fn (fn [{:event-info/keys [event]}] (-hash event))})
 (rum/defcs event-view <
   event-view-key-fn
   static-by-hash
@@ -183,119 +227,95 @@
   (hga-transitions/mixin ::view-state    (fn [event-info] (some-> event-info :event-info/event -hash)))
   (hga-transitions/mixin ::sp-view-state (fn [event-info] (some-> event-info :event-info/event hg/self-parent -hash)))
   (hga-transitions/mixin ::op-view-state (fn [event-info] (some-> event-info :event-info/event hg/other-parent -hash)))
-  [{::keys [view-state sp-view-state op-view-state]} {:event-info/keys [event round r-concluded? share-stake? color witness? stake-map votes received-event] :as event-info}]
+  [{::keys [view-state sp-view-state op-view-state]} {:event-info/keys [event color round round-concluded? witness? stake-map concluded-voting received-event] :as event-info}]
+  ;;(js/console.log event-info)
   #_(log! [:render-event-view @hga-playback/*frame] (-hash event))
-  (let [x (js-map/get view-state :x)
-        y (js-map/get view-state :y)
-        opacity (js-map/get view-state :opacity)
-        {r        :round/number
-         r-final? :round/final?} round
+  (let [x                        (js-map/get view-state :x)
+        y                        (js-map/get view-state :y)
+        opacity                  (or (js-map/get view-state :opacity) 0)
+        fill-opacity             (or (js-map/get view-state :fill-opacity) 0)
+        {round-final? :round/final?} round
         share-stake?             (some-> event :event/tx :tx/fn-id (= :share-stake))]
-    [:g.event-info {:opacity opacity}
+    (when (not (zero? opacity))
+      [:g {:key     (-hash event)
+           :opacity opacity}
 
-     [:g ;; refs
-      (when sp-view-state
-        [:line {hga-view/x1   x
-                hga-view/y1   y
-                hga-view/x2   (js-map/get sp-view-state :x)
-                hga-view/y2   (js-map/get sp-view-state :y)
-                :stroke       :lightgray
-                :stroke-width "2px"
-                :style        {:opacity (- 1 (js-map/get view-state :fill-opacity))}}])
+       [:g.refs
+        (when sp-view-state
+          [:line {hga-view/x1   x
+                  hga-view/y1   y
+                  hga-view/x2   (js-map/get sp-view-state :x)
+                  hga-view/y2   (js-map/get sp-view-state :y)
+                  :stroke       :lightgray
+                  :stroke-width "2px"
+                  :style        {:opacity (- 1 fill-opacity)}}])
 
-      (when op-view-state
-        [:line {hga-view/x1   x
-                hga-view/y1   y
-                hga-view/x2   (js-map/get op-view-state :x)
-                hga-view/y2   (js-map/get op-view-state :y)
-                :stroke       :lightgray
-                :stroke-width "2px"
-                :style        {:opacity (- 1 (js-map/get view-state :fill-opacity))}}])]
+        (when op-view-state
+          [:line {hga-view/x1   x
+                  hga-view/y1   y
+                  hga-view/x2   (js-map/get op-view-state :x)
+                  hga-view/y2   (js-map/get op-view-state :y)
+                  :stroke       :lightgray
+                  :stroke-width "2px"
+                  :style        {:opacity (- 1 fill-opacity)}}])]
 
-     [:g.event (merge-attr-maps
-                {:class  [(when r-final? "r-final")
-                          (when r-concluded? "r-concluded")
-                          (when share-stake? "tx-share-stake")]
-                 :width  (* hga-view/wit-r 2)
-                 :height (* hga-view/wit-r 2)}
-                (inspectable event))
+       [:g.event-info {:width  (* hga-view/wit-r 2)
+                       :height (* hga-view/wit-r 2)
+                       :style  {:transform (translate-based-on-view-mode x y)}}
 
-      (when witness?
-        [:circle.witness
-         {hga-view/cx   x
-          hga-view/cy   y
-          :r            hga-view/wit-r
-          :stroke       :black
-          :stroke-width 1
-          :fill         :transparent}])
+        [:g (inspectable :witness)
+         [:circle.witness
+          {:key   "witness"
+           :class [(if witness? "present" "absent")
+                        (when (and witness? round-final?) "final")]}]]
 
-      (when stake-map
-        [:g.stake-map (inspectable stake-map)
-         (for [[stake-holder _stake-holded] stake-map]
-           [:g.stake {:key stake-holder}
-            (let [member                                                                (-> stake-holder hg-members/member-name->person)
-                  [start-vote-circumferance vote-circumferance _end-vote-circumferance] (vote-circumferance-start+for+end stake-holder stake-map)]
-              [:circle {hga-view/cx       x
-                        hga-view/cy       y
-                        :r                hga-view/vote-r
-                        :fill             :transparent
-                        :stroke           (color-rgba-str (:member/color-rgb member) 1)
-                        :stroke-width     hga-view/vote-stroke-width
-                        :stroke-dasharray (str "0 " start-vote-circumferance " " vote-circumferance " " hga-view/vote-circumferance)}])])])
+        [:g.votes {:class [(when stake-map "present")]}
+         (when stake-map
+           (let [member-name->vote (->> concluded-voting :concluded-voting/votes (into {} (map (fn [vote] [(-> vote :vote/from-event hg/creator) vote]))))
+                 voted?            (some? concluded-voting)]
+             (for [[stake-holder stake-amount] stake-map]
+               (let [member                                                                (-> stake-holder hg-members/member-name->person)
+                     [start-vote-circumferance vote-circumferance _end-vote-circumferance] (vote-circumferance-start+for+end stake-holder stake-map)
+                     ?vote                                                                 (member-name->vote stake-holder)
+                     ?vote-value                                                           (:vote/value ?vote)]
+                 [:g {:key stake-holder}
+                  [:g (inspectable (if ?vote ?vote {:stake/holder stake-holder
+                                                    :stake/amount stake-amount}))
+                   [:circle.vote {:r                hga-view/vote-r
+                                  :fill             :transparent
+                                  :stroke-width     hga-view/vote-stroke-width
+                                  :stroke-dasharray (str "0 " start-vote-circumferance " " vote-circumferance " " hga-view/vote-circumferance)
+                                  :style            {:stroke (cond (not voted?)
+                                                                   (color-rgba-str (:member/color-rgb member) 0.33)
 
-      (when votes
-        [:g.votes
-         (for [{:vote/keys [from-event value] :as vote} votes]
-           (let [member-name                                                           (:event/creator from-event)
-                 member                                                                (-> member-name hg-members/member-name->person)
-                 [start-vote-circumferance vote-circumferance _end-vote-circumferance] (vote-circumferance-start+for+end member-name (:vote/stake-map vote))]
-             (assert stake-map (:vote/stake-map vote))
-             [:g.vote (merge {:key member-name} (inspectable vote))
-              [:circle {hga-view/cx       x
-                        hga-view/cy       y
-                        :r                hga-view/vote-r
-                        :fill             :transparent
-                        :stroke           (if value
-                                            (color-rgba-str (:member/color-rgb member) 1)
-                                            "cyan")
-                        :stroke-width     hga-view/vote-stroke-width
-                        :stroke-dasharray (str "0 " start-vote-circumferance " " vote-circumferance " " hga-view/vote-circumferance)}]]))])
+                                                                   (and voted? ?vote-value)
+                                                                   (color-rgba-str (:member/color-rgb member) 1)
 
-      ;; always rendering white background to hide refs
-      [:circle.event
-       {hga-view/cx   x
-        hga-view/cy   y
-        :r            hga-view/evt-r
-        :stroke       color
-        :stroke-width 1
-        :fill         "white"}]
+                                                                   :else
+                                                                   "lightgray")}}]]]))))]
 
-      ;; received event color
-      (when-let [{:keys [red green blue]} (js-map/get view-state :fill)]
-        (let [fill-opacity (js-map/get view-state :fill-opacity)
-              fill (str "rgba("red","green","blue","fill-opacity")")]
-          [:circle.received-event
-           {hga-view/cx   x
-            hga-view/cy   y
-            :r            hga-view/evt-r
-            :stroke       color
-            :stroke-width 1
-            :fill         fill}]))
+        ;; always rendering white background to hide refs
+        [:g (inspectable event)
+         [:circle.event
+          {:key          "event-refs-hide"
+           :r            hga-view/evt-r
+           :stroke       color
+           :stroke-width 1
+           :fill         "white"}]]
 
-      (when share-stake?
-        (hga-icons/transfer {hga-view/x (- x hga-view/evt-r)
-                             hga-view/y (- y hga-view/evt-r)
-                             :width     hga-view/evt-s
-                             :height    hga-view/evt-s
-                             :fill      (gc/hsl->hex (gc/lighten (gc/hsl 0 0 0) (* 100 (js-map/get view-state :fill-opacity))))}))
+        (when-not (zero? fill-opacity)
+          (let [{:keys [red green blue]} (js-map/get view-state :fill)
+                fill                     (str "rgba("red","green","blue","fill-opacity")")]
+            [:g (inspectable received-event)
+             [:circle.received-event
+              {:r    hga-view/evt-r
+               :fill (if (zero? fill-opacity) "white" fill)}]]))
 
-      [:text.round
-       (if-not hga-view/view-mode-horizontal?
-         {hga-view/x (+ x (/ hga-view/wit-r 2))
-          hga-view/y (+ y (/ (- hga-view/wit-r) 2))}
-         {hga-view/x (+ x (/ (- hga-view/wit-r) 2))
-          hga-view/y (+ y (/ hga-view/wit-r 2))})
-       r]]]))
+        (when-let [tx (:event/tx event)]
+          [:g {:fill (gc/hsl->hex (gc/lighten (gc/hsl 0 0 0) (* 100 (js-map/get view-state :fill-opacity))))}
+           (event-tx-view tx)])
+
+        (event-round-view round)]])))
 
 (defn* ^:memoizing ?received-event->event->received-event
   [?received-event]
@@ -304,42 +324,21 @@
     (let [prev (?received-event->event->received-event (:received-event/prev-received-event ?received-event))]
       (assoc prev (:received-event/event ?received-event) ?received-event))))
 
+(defn* ^:memoizing concluded-round->witness->cr+cv
+  [{:concluded-round/keys [r concluded-votings prev-concluded-round] :as cr}]
+  (if (= 0 r)
+    (hash-map)
+    (let [prev (concluded-round->witness->cr+cv prev-concluded-round)]
+      (reduce (fn [acc {:concluded-voting/keys [about] :as cv}]
+                (assoc acc about [cr cv]))
+              prev
+              concluded-votings))))
+
 (defn event->color [event]
   (-> event
       hg/event->person
       :member/color-rgb
       color-rgba-str))
-
-(defn* ^:memoizing ->enriched-event-info
-  [{:event-info/keys [event
-                      round
-                      witness?
-                      to-receive-votes?
-                      receives-votes?
-                      received-votes?
-                      voting-by
-                      ?concluded-in-cr
-                      received-event]
-    :as              event-info}]
-  (let [color            (event->color event)
-        {r-cr :round/cr} round
-
-        ?atop-cr (when to-receive-votes?
-                   (some->> r-cr
-                            (iterate :concluded-round/prev-concluded-round)
-                            (take-while some?)
-                            (some (fn [cr] (when (< (:concluded-round/r cr) (:round/number round))
-                                             cr)))))]
-
-    (-> event-info
-        (assoc :event-info/color color
-               :event-info/r-concluded? received-votes?)
-        (cond->
-          to-receive-votes?
-          (assoc :event-info/stake-map (hg/concluded-round->stake-map ?atop-cr))
-
-          (or received-votes? receives-votes?)
-          (assoc :event-info/votes (:concluded-voting/votes (hg/->?concluded-voting voting-by event ?atop-cr)))))))
 
 (def *rendered-evt-infos
   (rum/derived-atom [hga-playback/*playback] ::*rendered-evt-infos
@@ -353,40 +352,39 @@
             _                     (reset! hga-transitions/*last-concluded-round ?last-concluded-round)
             ?last-received-event  (some-> ?last-concluded-round :concluded-round/last-received-event)
             event->received-event (?received-event->event->received-event ?last-received-event)
+            ?witness->cr+cv       (some-> ?last-concluded-round concluded-round->witness->cr+cv)
             ->event-info          (fn [event]
-                                    (let [{r        :round/number
-                                           r-final? :round/final?
-                                           r-cr     :round/cr :as round} (hg/->round event ?last-concluded-round) ;; been very costly :hashgraph.app.page/round
+                                    (let [{r-final? :round/final?
+                                           r-cr     :round/cr :as round} (hg/->round event ?last-concluded-round)
 
                                           witness?          (hg/witness? event r-cr)
                                           to-receive-votes? (and witness?
                                                                  r-final?)
-                                          ?concluded-in-cr  (when to-receive-votes?
-                                                              (some->> ?last-concluded-round
-                                                                       (iterate :concluded-round/prev-concluded-round)
-                                                                       (take-while some?)
-                                                                       (some (fn [cr] (when (= (:concluded-round/r cr) r) cr)))))
+                                          [?cr ?cv]         (when to-receive-votes?
+                                                              (get ?witness->cr+cv event))
+                                          received-votes?   (some? ?cv)
 
-                                          received-votes? (boolean ?concluded-in-cr)
                                           receives-votes? (and to-receive-votes?
                                                                (not received-votes?)
                                                                ?main-tip
-                                                               (hg/ancestor? ?main-tip event)) ;; more costly the further tip is from the roots
+                                                               (hg/ancestor? ?main-tip event))
+                                          ?cv             (or ?cv
+                                                              (when receives-votes?
+                                                                (hg/->?concluded-voting ?main-tip event r-cr)))
+                                          stake-map       (if ?cr
+                                                            (hg/concluded-round->stake-map (:concluded-round/prev-concluded-round ?cr))
+                                                            (hg/concluded-round->stake-map r-cr))
                                           ?received-event (event->received-event event)
-                                          voting-by       (if received-votes?
-                                                            (-> ?concluded-in-cr :concluded-round/witness-concluded)
-                                                            ?main-tip)]
-                             ;; concluded stuff will be memoized
-                             ;; TODO enhance memoization to memoize based on predicate
-                             (->enriched-event-info (cond-> (hash-map :event-info/event             event
-                                                                      :event-info/round             round
-                                                                      :event-info/witness?          witness?
-                                                                      :event-info/to-receive-votes? to-receive-votes?
-                                                                      :event-info/received-votes?   received-votes?
-                                                                      :event-info/receives-votes?   receives-votes?
-                                                                      :event-info/voting-by         voting-by
-                                                                      :event-info/?concluded-in-cr  ?concluded-in-cr)
-                                                      ?received-event (assoc :event-info/received-event ?received-event)))))]
+
+                                          color           (event->color event)]
+                                      (cond-> (hash-map :event-info/color    color
+                                                        :event-info/event    event
+                                                        :event-info/round    round)
+                                        ?cr               (assoc :event-info/round-concluded? ?cr)
+                                        witness?          (assoc :event-info/witness? witness?)
+                                        to-receive-votes? (assoc :event-info/stake-map stake-map)
+                                        ?cv               (assoc :event-info/concluded-voting ?cv)
+                                        ?received-event   (assoc :event-info/received-event ?received-event))))]
         [(->> behind>
               (take 10)
               (map ->event-info))
@@ -404,28 +402,38 @@
      [:svg#render {(if hga-view/view-mode-horizontal? :width :height) (hga-view/evt->viz-height (-> played-evt-infos> first :event-info/event))
                    (if hga-view/view-mode-horizontal? :height :width) hga-view/viz-size}
       [:g.events-view
-       (for [evt-info (concat behind-evt-infos> played-evt-infos> rewinded-evt-infos>)]
+       (for [evt-info rewinded-evt-infos>]
+         (event-view evt-info))
+       (for [evt-info played-evt-infos>]
+         (event-view evt-info))
+       (for [evt-info behind-evt-infos>]
          (event-view evt-info))]]]))
+
+(rum/defc menu-controls []
+  [:div#menu-controls
+   [:button#menu-controls-toggler
+    (hga-icons/icon :solid :bars :2xl)]
+   #_[:button {:on-click #(swap! hga-state/*playback-attached-to-scroll? not)}
+    (str (if (rum/react hga-state/*playback-attached-to-scroll?) "detach" "attach") " playback to scroll")]])
 
 (rum/defc controls-view < rum/reactive []
   [:div#controls
-   [:button.toggler]
-   #_#_[:button {:on-click #(swap! hga-state/*playback-attached-to-scroll? not)}
-        (str (if (rum/react hga-state/*playback-attached-to-scroll?) "detach" "attach") " playback to scroll")]
+   (menu-controls)
    (hga-playback/playback-controls-view)])
 
 (rum/defc viz-section-view
   []
   [:div#viz-section {:style {:position :relative}}
-   (controls-view)
    (hga-tutorial/view)
    (viz)
-   (hga-inspector/view)])
+   (hga-inspector/bins-view)
+   ])
 
 (rum/defc home-view []
   [:div#home
    (hga-utils/plug "home")])
 
+(def scroll-coord (if hga-view/view-mode-horizontal? "left" "top"))
 (rum/defc page-view <
   {:did-mount
    (fn [state]
@@ -433,16 +441,16 @@
        (reset! hga-state/*viz-scroll-by! (fn [viz-px & {:keys [smooth?]}]
                                            (let [px (+ viz-px hga-view/window-size)]
                                              (.scrollBy dom-node (if smooth?
-                                                                   (js-obj "top" px
+                                                                   (js-obj scroll-coord px
                                                                            "behavior" "smooth")
-                                                                   (js-obj "top" px))))))
+                                                                   (js-obj scroll-coord px))))))
        (reset! hga-state/*viz-scroll! (fn [viz-px & {:keys [smooth?]}]
                                         (let [px (+ viz-px hga-view/window-size)]
                                           #_(set! (.-scrollTop dom-node) px)
                                           (.scroll dom-node (if smooth?
-                                                              (js-obj "top" px
+                                                              (js-obj scroll-coord px
                                                                       "behavior" "smooth")
-                                                              (js-obj "top" px)))) ;; doesn't scroll pixel-perfect on zoom
+                                                              (js-obj scroll-coord px)))) ;; doesn't scroll pixel-perfect on zoom
                                         ))
        (.addEventListener dom-node "scroll"
                           ;; V may cause stale viz-scroll
@@ -456,7 +464,8 @@
   [:div#page-view
    #_(hga-analysis/graph-view)
    (home-view)
-   (viz-section-view)])
+   (viz-section-view)
+   (controls-view)])
 
 (rum/defc view []
   [:div#root-view

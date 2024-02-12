@@ -154,6 +154,34 @@ No more a problem, since received events form a blockchain viz now.
 It's about the same speed, be it js-obj is a bit faster
 ** TODO maybe switch mem to js-obj by args hash
 * DONE switch mem warmup to loop with recur
+* DONE make inspector to fit the layout
+It has 1/3 of a dimension.
+** PROBLEM showing nested data structures in-line makes for a fast out-of-layout size
+*** DONE show type tables, populated with data of corresponding type
+Following types are in use:
+- event
+- tx
+- round
+- vote
+- concluded-voting
+- concluded-round
+- plain
+
+**** DONE compactness can be further enhanced by extracting ns of keys to a table type
+** PROBLEM having fixed inspector breaks the scroll illusion
+Ok for now. No good solutions found.
+*** SOLUTION make inspected positioned relative to scroll
+**** PROBLEM out-of-scroll inspected affect viz
+***** SOLUTION make only in-view inspected affect viz
+***** SOLUTION flush out-of-view inspected
+****** PROBLEM implicit behaviour, user won't expect it
+**** PROBLEM where to add inspectable?
+***** SOLUTION to an on-screen inspected table type, or a new one
+****** PROBLEM rather complex UX (and to dev)
+** PROBLEM having fixed type tables user may add too many items, making them out-of-bound
+*** DONE SOLUTION add scroll inside tables
+**** PROBLEM when no more table scroll is availabel - it'll affect the viz scroll
+***** SOLUTION catch scroll events, stop propagation
 
 * objectives
 ** understand the algo to see how it can be applied in NG
@@ -208,6 +236,14 @@ It's about the same speed, be it js-obj is a bit faster
 **** with progress saved
 **** gets more difficult as you go
 **** leaderboard
+*** in form of achivements
+**** found all data types
+**** found all vote types
+**** shared stake
+**** issued custom tx
+**** played 1000 events
+**** left a comment
+**** discovered all explanations
 *** in form of a MCQ
 ** resistance to inactive members
 *** e.g., remove their stake from acceptance threshold

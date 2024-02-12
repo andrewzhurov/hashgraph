@@ -3,18 +3,27 @@
   (:require-macros [hashgraph.app.transitions :refer [t!]])
   (:require [rum.core :as rum]
             [goog.object]
+            [garden.units :as gu]
+            [garden.types]
             [cljs.core :as core]
             [hashgraph.main :as hg]
             [hashgraph.members :as hg-members]
             [hashgraph.app.view :as hga-view]
             [hashgraph.app.timing :as hga-timing]
             [hashgraph.app.events :as hga-events]
-            [hashgraph.app.inspector]
             [hashgraph.utils.core :refer [log!
                                           safe-assoc! safe-assoc-in!
                                           safe-update! safe-update-in!]
              :refer-macros [l letl defn*]
              :as utils]))
+
+#_
+(extend-type garden.types/CSSUnit
+  Object
+  (toString [{:keys [unit magnitude]}]
+    (str magnitude (name unit))))
+#_
+(+ (gu/ms 100) 100)
 
 (def tt 500) ;; transition time ms
 
@@ -161,7 +170,7 @@
                            to-y-offset     (-> new-cr-to-y
                                                (- new-cr-from-y)
                                                (/ (count (:concluded-round/es-r new-cr))))
-                           ->to-y          (fn [re] (+ new-cr-from-y (* to-y-offset (:received-event/r-idx (l re)))))
+                           ->to-y          (fn [re] (+ new-cr-from-y (* to-y-offset (:received-event/r-idx re))))
                            to-x            cr-x]
                        (doseq [re (reverse received-events)]
                          (let [tt-start     (vswap! **last-cr-tt-start + cr-tt-delay)
@@ -247,10 +256,9 @@
                       t-val-delta   (- t-val-to t-val-from)
                       t-val-current (+ t-val-from (* t-val-delta t-mod))]
                   (js-map/assoc! current prop t-val-current)
-                  (notify-view-state-change view-state)
-
                   (when (= 1 t-time-pos)
                     (js-map/dissoc! prop->t prop)))))))
+         (notify-view-state-change view-state)
          (when (js-map/empty? prop->t)
            (js-map/dissoc! view-state->with-t? view-state)))))))
 
