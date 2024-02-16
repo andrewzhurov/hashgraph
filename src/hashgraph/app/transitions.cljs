@@ -10,6 +10,7 @@
             [hashgraph.members :as hg-members]
             [hashgraph.app.view :as hga-view]
             [hashgraph.app.timing :as hga-timing]
+            [hashgraph.app.state :as hga-state]
             [hashgraph.app.events :as hga-events]
             [hashgraph.utils.core :refer [log!
                                           safe-assoc! safe-assoc-in!
@@ -30,10 +31,6 @@
 ;; These states are used to trigger view transitions.
 ;; *just-played< events transition from other-parent (as though they are being sent over the wire).
 ;; *just-rewinded> events transition from their current position back to other-parent (as though time's rewinded)
-(defonce *just-played<   (atom '()))
-(defonce *just-rewinded> (atom '()))
-(defonce *last-concluded-round (atom nil))
-
 (defonce view-id->view-state (js-map))
 (defonce view-state->with-t? (js-map))
 
@@ -82,7 +79,7 @@
 
 
 
-(add-watch *just-played< ::just-played-transitions-on-playback
+(add-watch hga-state/*just-played< ::just-played-transitions-on-playback
            (fn [_ _ _ just-played<]
              #_(log! :just-played< just-played<)
              (let [tt-start (cljs.core/system-time)
@@ -104,7 +101,7 @@
                          :y       tt-start to-y to-y tt-end
                          :opacity tt-start 0    1    tt-end)))))))
 
-(add-watch *just-rewinded> ::just-rewinded-transitions-on-playback
+(add-watch hga-state/*just-rewinded> ::just-rewinded-transitions-on-playback
            (fn [_ _ _ just-rewinded>]
              #_(log! :just-rewinded> just-rewinded>)
              (let [tt-start (cljs.core/system-time)
@@ -148,7 +145,7 @@
 (def cr-tt-delay (/ tt 20))
 (def **last-cr-tt-start (volatile! (cljs.core/system-time)))
 (def **last-cr-direction (volatile! nil))
-(add-watch *last-concluded-round ::transitions-on-concluded-round
+(add-watch hga-state/*last-concluded-round ::transitions-on-concluded-round
            (fn [_ _ prev-cr current-cr]
              (when (not (identical? prev-cr current-cr))
                (if (> (:concluded-round/r current-cr)

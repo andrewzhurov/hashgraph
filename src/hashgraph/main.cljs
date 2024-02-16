@@ -100,7 +100,6 @@
   (memoize (fn [evts]
              (->> evts (into #{} (remove (fn [x] (some (fn [y] (self-parent? x y)) evts))))))))
 
-#_
 (def index
   "Index position of event x, as max of index position of self-parent and parent"
   (memoize

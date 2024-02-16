@@ -11,17 +11,23 @@
             [hashgraph.app.icons :as hga-icons]
             [hashgraph.app.state :as hga-state]
             [hashgraph.app.events :as hga-events]
-            [hashgraph.app.transitions :as hga-transitions]
+            [hashgraph.app.keyboard :as hga-keyboard]
+            [hashgraph.app.transitions :refer [tt] :as hga-transitions]
             [hashgraph.app.utils :as hga-utils]
             [hashgraph.app.inspector]
             [hashgraph.utils.core :refer-macros [defn* l letl letp] :as utils]
-            [taoensso.tufte :refer [profile p]]))
+            [taoensso.tufte :refer [profile p]]
+            [cljs.core :as core]))
 
 
 ;; Playback state is kept explicitly rather than being a derived view,
 ;; this is to get a performance gain, sacrificing simplicity.
-(defonce *left< (atom (list {:event/creator       hg/main-creator
-                             :event/creation-time 1})))
+(defonce *left< (atom (list)))
+(defonce *just-left< (atom (list)))
+(add-watch *just-left< ::update-left-on-just-left
+           (fn [_ _ _ just-left<]
+             (swap! *left< (fn [left<] (-> (concat left< just-left<)
+                                           (->> (sort-by :event/creation-time)))))))
 
 ;; Playback is split to four states.
 ;;
@@ -75,7 +81,7 @@
                            new-just-played<                  to-play-rewinded<
                            new-played<                       (concat new-played< to-play-rewinded<)]
                        (if (not (empty? new-rewinded<))
-                         (do (reset! hga-transitions/*just-played< new-just-played<)
+                         (do (reset! hga-state/*just-played< new-just-played<)
                              (reset! *playback
                                      {:behind>   new-behind>
                                       :played<   new-played<
@@ -84,7 +90,7 @@
                                [to-play-left< new-left<] (->> left< (split-with #(not (hga-view/->after-viz-playback-viewbox? (hga-view/evt->y %) new-viz-scroll))))
                                new-played<               (concat new-played< to-play-left<)
                                new-just-played<          (concat new-just-played< to-play-left<)]
-                           (reset! hga-transitions/*just-played< new-just-played<) ;; fire first, so transitions are ready, brittle :/
+                           (reset! hga-state/*just-played< new-just-played<) ;; fire first, so transitions are ready, brittle :/
                            (reset! *playback
                                    {:behind>   new-behind>
                                     :played<   new-played<
@@ -109,7 +115,7 @@
                              new-rewinded<            (into new-rewinded< to-rewind>)
                              new-played<              (reverse new-played>)
                              ]
-                         (reset! hga-transitions/*just-rewinded> new-just-rewinded>)
+                         (reset! hga-state/*just-rewinded> new-just-rewinded>)
                          (reset! *playback
                                  {:behind>   new-behind>
                                   :played<   new-played<
@@ -118,9 +124,6 @@
                            (let [new-left< (concat to-left< @*left<)]
                              (reset! *left< new-left<))))))))))
 
-;; Ensures there are always some events left to playback by issuing new ones
-(def max-buffered-size 200)
-(def min-buffered-size 10)
 
 (defn ->playback-events< [{:keys [behind> played< rewinded<]}]
   (-> behind>
@@ -133,37 +136,40 @@
         left<    @*left<]
     (concat (->playback-events< playback) left<)))
 
-(def buffer-playback-left-events-on-exhaust
+;; Ensures there are always some events left to playback by issuing new ones
+(def max-buffered-size 200)
+(def min-buffered-size 20)
+(defn buffer-playback-left-events-on-exhaust! []
   (add-watch *left< ::buffer-playback-left-events-on-exhaust
              (fn [_ _ _ left<]
                (when (< (count left<) min-buffered-size)
                  (let [buffered-size    (count left<)
                        playback-events< (->playback-events< @*playback)
-                       new-left<        (hga-events/issue playback-events< left< (fn [new-events<] (>= (+ (count new-events<) buffered-size) min-buffered-size)))]
-                   (reset! *left< new-left<))))))
+                       new-just-left<   (hga-events/issue playback-events< left< (fn [new-events<] (>= (+ (count new-events<) buffered-size) min-buffered-size)))]
+                   (reset! *just-left< new-just-left<))))))
 
 (def issue-on-iddle-for-ms (/ 16.6 3))
 (defn buffer-playback-left-events-async-on-idle! []
   (js/requestIdleCallback
    (fn []
      (utils/timing
-      (let [left<                               @*left<]
+      (let [left< @*left<]
         (when (< (count left<) max-buffered-size)
           #_(js/console.log "on idle buffering more events")
           (let [playback-events< (->playback-events< @*playback)
-                new-left< (hga-events/issue playback-events< left<
-                                            (fn [new-events<] (> (utils/*->time*) issue-on-iddle-for-ms))
-                                            #_(constantly true) ;; issue one at a time
-                                            #_(fn [new-events] (>= (count new-events) 10)))]
-            (reset! *left< new-left<)))))
+                new-just-left<   (hga-events/issue playback-events< left<
+                                                 (fn [new-events<] (> (utils/*->time*) issue-on-iddle-for-ms))
+                                                 #_(constantly true) ;; issue one at a time
+                                                 #_(fn [new-events] (>= (count new-events) 10)))]
+            (reset! *just-left< new-just-left<)))))
      (buffer-playback-left-events-async-on-idle!))))
 
-(buffer-playback-left-events-async-on-idle!)
-
-#_(defn play-forward [{:keys [played left] :as playback}]
-  (-> playback
-      (update :played conj (first left))
-      (update :left rest)))
+(defn buffer-initially! []
+  (let [left< @*left<]
+    (when (< (count left<) min-buffered-size)
+      (let [playback-events< (->playback-events< @*playback)
+            new-just-left<   (hga-events/issue playback-events< left< (fn [new-events<] (> (count new-events<) min-buffered-size)))]
+        (reset! *just-left< new-just-left<)))))
 
 
 (defn pack [events<]
@@ -201,11 +207,6 @@
       (->> (log! :unpacked))
       (= all-events<))
   )
-
-(let [m1 {:a :a}
-      m2 {:a m1}
-      m3 {:a m1}]
-  (identical? (:a m2) (:a m3)))
 
 #_
 (let [playback-events< (->playback-events< @*playback)]
