@@ -5,7 +5,9 @@
             [hashgraph.utils.core :refer [log!] :refer-macros [l letl] :as utils]))
 
 (def view-mode-horizontal? true)
-(def border-radius "6px")
+(def border-radius 6)
+(def tutorial-size 300)
+(def tutorial-margin 5)
 
 (def window-height js/window.innerHeight)
 (def window-width js/window.innerWidth)
@@ -48,7 +50,9 @@
 (def members-height 66 #_(+ members-padding-y avatar-size members-padding-y))
 (def members-padding-y (-> members-height (- avatar-size) (/ 2)))
 
-(def load-area-size (+ sp-padding evt-s))
+(def load-area-size (-> tutorial-size
+                        (/ 2)
+                        (+ tutorial-margin)) #_(+ sp-padding evt-s))
 (def after-viz-buffer-size (* 35 evt-offset))
 (def playback-size (ceil (-> window-size
                              (- members-padding-y avatar-size members-padding-y load-area-size))))
