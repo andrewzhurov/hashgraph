@@ -21,6 +21,7 @@
 (def creator :event/creator)
 (def self-parent :event/self-parent)
 (def other-parent :event/other-parent)
+(def creation-time :event/creation-time)
 
 (defn parents
   "Set of events that are parents of x."
