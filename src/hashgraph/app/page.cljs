@@ -443,7 +443,7 @@
    (fn [state]
      (let [dom-node (rum/dom-node state)]
        (reset! hga-state/*viz-scroll-by! (fn [viz-px & {:keys [smooth?]}]
-                                           (let [px (+ viz-px hga-view/window-size)]
+                                           (let [px viz-px]
                                              (.scrollBy dom-node (if smooth?
                                                                    (js-obj scroll-coord px
                                                                            "behavior" "smooth")
