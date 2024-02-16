@@ -110,7 +110,8 @@
 
    [:#page-view {:height  "100vh"
                  :width   "100vw"
-                 :display :flex}]
+                 :display :flex
+                 :outline :none}]
 
    [:#controls]
    [:#menu-controls (merge control-size-style
@@ -461,11 +462,14 @@
                            #(reset! hga-state/*viz-scroll (- (if hga-view/view-mode-horizontal?
                                                                (.-scrollLeft (.-target %))
                                                                (.-scrollTop (.-target %)))
-                                                             hga-view/window-size)))))
+                                                             hga-view/window-size))))
+       (.focus dom-node
+               ;; focusVisible works only in Firefox atm https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/focus#browser_compatibility
+               ;; overriding :outline manually in styles
+               ^js {"focusVisible" false}))
      state)}
   []
-  [:div#page-view
-   #_(hga-analysis/graph-view)
+  [:div#page-view {:tab-index  -1} ;; to be able to focus on load ^, so keyboard events trigger scroll
    (home-view)
    (viz-section-view)
    (controls-view)])
