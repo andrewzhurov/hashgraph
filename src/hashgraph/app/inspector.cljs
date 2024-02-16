@@ -261,7 +261,8 @@
 
 (def ms-keys-orders
   [[:trace/fn-name :trace/fn-args :trace/result :trace/time :trace/traces]
-   [:fn-profile/fn-name :fn-profile/min-time :fn-profile/max-time :fn-profile/medium-time :fn-profile/max-time :fn-profile/total-time :fn-profile/max-time-traces :fn-profile/traces]])
+   [:fn-profile/fn-name :fn-profile/min-time :fn-profile/max-time :fn-profile/medium-time :fn-profile/max-time :fn-profile/total-time :fn-profile/max-time-traces :fn-profile/traces]
+   [:event/creator :event/creation-time :event/self-parent :event/other-parent :event/tx]])
 
 (def m-key->idx
   (->> ms-keys-orders
