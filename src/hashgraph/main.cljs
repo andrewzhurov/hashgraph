@@ -1,4 +1,11 @@
 (ns hashgraph.main
+  "Implementation of the Hashgraph algorithm. Likely misbehaving, but enough to get intuition of how it works via viz.
+   This implementation sacrificed simplicity in favor of some performance.
+
+   If you wish to grok on it, consider looking at the official algorithm.
+   It's in functional form, simple and elegant (yet may be difficult to grasp).
+   Can be found in the Appendix A (at the bottom) of the paper: https://www.swirlds.com/downloads/SWIRLDS-TR-2016-01.pdf"
+
   (:refer-clojure
    :exclude [parents])
   (:require [cljs.math :refer [floor ceil]]
@@ -31,6 +38,8 @@
 
 (defn* ^:memoizing ancestors
   [x]
+  ;; does not consider x an ancestor of itself, which is more intuitive, but diverges from the spec
+  ;; however, overall behavior of algorithm is the same, since this logic's moved into see?
   (cond-> #{}
     (self-parent x) (-> (conj (self-parent x))
                         (set/union (ancestors (self-parent x))))
