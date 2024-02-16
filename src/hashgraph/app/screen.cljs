@@ -11,11 +11,14 @@
             [rum.core :as rum]
             [taoensso.tufte :as tufte :refer [defnp p profiled profile]]
             [hashgraph.app.log :as hga-log]
+            [hashgraph.app.keyboard :as hga-keyboard]
             [hashgraph.app.inspector :as hga-inspector]
             [hashgraph.app.page :as page]
             [hashgraph.utils.core :refer [log-flush!] :refer-macros [l]]
             [hashgraph.utils-test]
-            [hashgraph.utils.js-map-test]))
+            [hashgraph.utils.js-map-test]
+            [hashgraph.app.playback :as hga-playback]
+            [hashgraph.app.tutorial :as hga-tutorial]))
 
 #_#_
 (defn in-safari? []
@@ -75,5 +78,9 @@
    {}
    #_{:format-pstats-opts {:columns      [:n :p50 :mean :clock :sum]
                            :format-id-fn name}})
-  (hga-inspector/register-keydowns-lister)
+  (hga-keyboard/register-keydowns-lister!)
+  (hga-tutorial/init-tutorial-events!)
+  (hga-playback/buffer-playback-left-events-on-exhaust!)
+  (hga-playback/buffer-playback-left-events-async-on-idle!)
+
   (start))
