@@ -991,7 +991,9 @@
                                      (conj share-stake-log
                                            {:share-stake/from   from
                                             :share-stake/to     to
-                                            :share-stake/amount amount})))))})
+                                            :share-stake/amount amount})))))
+   :inc-counter
+   (fn [db _] (update db :counter inc))})
 
 ;; when round has too many events, recursion depth of browser is not enough to calc it all
 ;; TODO switch to calc for concluded round, from earliest to latest

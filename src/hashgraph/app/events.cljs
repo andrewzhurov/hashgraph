@@ -63,16 +63,31 @@
   (fn [names name]
     (vec (disj (set names) name))))
 
-(defn with-once-per-round-random-share-stake-tx [evt]
-  (cond-> evt
-    (zero? (rand-int 4)) #_(some-> evt hg/self-parent (->> hg/witness? evt))
-    (assoc :event/tx (let [from    (:event/creator evt)
-                           to      (rand-nth (names-without-name hg-members/names from))
-                           percent (rand-nth (if (= (:event/creator evt) hg/main-creator)
-                                               [[1 3] [2 3]] ;; initiator's used as main concluding member, so let's not drop her from the system by sharing all her stake out
-                                               [[1 3] [2 3] [3 3]]))]
-                       (make-share-stake-tx from to percent)))))
+(def share-stake-tx-delay    30)
+(def share-stake-tx-n-events 30)
+(defn with-occasional-share-stake-tx [evt events<]
+  (let [events-count (- (count events<) share-stake-tx-delay)
+        first-tx? (zero? events-count)]
+    (cond-> evt
+      (and (not (neg? events-count))
+           (zero? (mod events-count share-stake-tx-n-events)))
+      (assoc :event/tx (let [from    (hg/creator evt)
+                             to      (if first-tx?
+                                       (rand-nth (vec (set/difference (set hg-members/names) (set hg-members/initial-member-names))))
+                                       (rand-nth (names-without-name hg-members/names from)))
+                             percent (rand-nth (if (= (hg/creator evt) hg/main-creator)
+                                                 [[1 3] [2 3]] ;; initiator's used as main concluding member, so let's not drop her from the system by sharing all her stake out
+                                                 [[1 3] [2 3] [3 3]]))]
+                         (make-share-stake-tx from to percent))))))
 
+(def inc-counter-tx-delay    30)
+(def inc-counter-tx-n-events 14)
+(defn with-occasional-inc-counter-tx [evt events<]
+  (let [events-count (- (count events<) inc-counter-tx-delay)]
+    (cond-> evt
+      (and (not (neg? events-count))
+           (zero? (mod events-count inc-counter-tx-n-events)))
+      (assoc :event/tx {:tx/fn-id :inc-counter}))))
 (defn* ^:memoizing events>->c->hg [[event & rest-events>]]
   (if (nil? event)
     (hash-map)
@@ -94,16 +109,25 @@
 ;; we need to make sure that events have distinct creation times (as int, because scroll position is an int).
 ;; To achieve that we can track taken creation times, and ensure that newly issued creation time is distinct.
 (defonce *taken-creation-times (atom #{}))
+(defonce slowdown-period-ms 3000)
+(defonce *in-slowdown? (atom true))
 (defn ->next-creation-time [prev-creation-time]
   (let [next-creation-time-candidate
         (-> prev-creation-time
             (+ hga-view/evt-offset)
+            (+ (-> slowdown-period-ms
+                   (- (/ prev-creation-time 2))
+                   (max 0)
+                   (/ 15)))
             ;; add small random offset, to ensure creation-time is distinct
             ;; would be enough to give [0; members-count]
             (+ (rand-int (* (count hg-members/names) 2))) ;; * 2 to give more leeway
-            )]
+            ceil)]
     (if (not (contains? @*taken-creation-times next-creation-time-candidate))
-      (do (swap! *taken-creation-times conj next-creation-time-candidate)
+      (do (when (and @*in-slowdown?
+                     (> next-creation-time-candidate slowdown-period-ms))
+            (reset! *in-slowdown? false))
+          (swap! *taken-creation-times conj next-creation-time-candidate)
           next-creation-time-candidate)
       ;; try again, with a different random offset
       (->next-creation-time prev-creation-time))))
@@ -152,19 +176,26 @@
                  (reduce (fn [new-events-acc receiver]
                            (conj new-events-acc
                                  (let [?receiver-hg (creator->hg receiver)
+                                       all< (concat playback-events< left< new-events-acc)
                                        new-receiver-hg
                                        (cond-> (hash-map :event/creator      receiver
                                                          :event/other-parent sender-hg
                                                          :event/creation-time
-                                                         (-> (max (:event/creation-time sender-hg)
-                                                                  (:event/creation-time ?receiver-hg))
+                                                         (-> (if @*in-slowdown?
+                                                               (:event/creation-time (first (sort-by :event/creation-time > (concat left< new-events-acc))))
+                                                               (max (:event/creation-time sender-hg)
+                                                                    (:event/creation-time ?receiver-hg)))
                                                              (->next-creation-time)))
                                          ?receiver-hg (assoc :event/self-parent ?receiver-hg)
-                                         :always      with-once-per-round-random-share-stake-tx)]
+                                         :always      (with-occasional-share-stake-tx all<)
+                                         :always      (with-occasional-inc-counter-tx all<))]
                                    new-receiver-hg)))
-                         new-events<))))]
+                         new-events<))))
+        new-events-sorted< (sort-by :event/creation-time new-events<)]
     (if (->enough? new-events<)
-      (sort-by :event/creation-time (concat left< new-events<))
-      (recur playback-events< left< ->enough? new-events<))))
+      new-events-sorted<
+      (recur playback-events< left< ->enough? new-events-sorted<))))
 
 (defn issue [playback-events< left< ->enough?] (issue* playback-events< left< ->enough? []))
+
+;; perhaps craft an infinite lazy sequence of events (with iterate ?)
