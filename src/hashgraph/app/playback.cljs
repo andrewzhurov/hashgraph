@@ -265,14 +265,19 @@
       (viz-scroll-to-event! left-event)
       nil)))
 
-(def *playing? (atom false))
-(defn play! []
-  (when @*playing?
-    (when-let [viz-scroll-by! @hga-state/*viz-scroll-by!]
-      (viz-scroll-by! (* hga-view/evt-offset)))
-    (js/setTimeout play! (/ hga-transitions/tt 5))))
+(def play-scroll-px-per-s (* (+ hga-view/hgs-padding hga-view/evt-r) 15))
+(def play-scroll-px-per-ms (/ play-scroll-px-per-s 1000))
+(defn play! [& [lt]]
+  (let [lt (or lt (cljs.core/system-time))]
+    (when @hga-state/*playback-playing?
+      (let [t (cljs.core/system-time)]
+        (when-let [viz-scroll-by! @hga-state/*viz-scroll-by!]
+          (let [dt (- t lt)
+                px (-> play-scroll-px-per-ms (* dt))]
+            (viz-scroll-by! px :smooth? false)))
+        (js/requestAnimationFrame (partial play! t))))))
 
-(add-watch *playing? ::run-play
+(add-watch hga-state/*playback-playing? ::run-play
            (fn [_ _ old new]
              (when (and (not old)
                         new)
@@ -303,28 +308,28 @@
     :description "Set playback position to start"
     :short       (hga-icons/icon :solid :backward-fast)
     :action      rewind-all!
-    :shortcut    #{:ctrl :<-}}
+    :shortcut    #{:ctrl :shift :<-}}
    ;; |<-
    {:id          :rewind-once
     :icon        (hga-icons/icon :solid :backward-step)
     :description "Rewind playback once backwards"
     :short       "<-"
-    :action      rewind-once!
-    :shortcut    #{:ctrl :shift :<-}}
+    :action      (utils/silence tt rewind-once!)
+    :shortcut    #{:ctrl :<-}}
    ;; |> ||
    {:id          :play-pause
     :action      #(swap! hga-state/*playback-playing? not)
-    :shortcut    #{:ctrl :space}
+    :shortcut    #{:space}
     :*state      hga-state/*playback-playing?
     :on-state    {true {:short "Pause"
-                        :icon  (hga-icons/icon :solid :play)}
+                        :icon  (hga-icons/icon :solid :pause)}
                   false {:short "Play"
-                         :icon (hga-icons/icon :solid :pause)}}}
+                         :icon (hga-icons/icon :solid :play)}}}
    ;; ->|
    {:id          :play-once
     :description "Play next event"
     :short       (hga-icons/icon :solid :forward-step)
-    :action      play-once!
+    :action      (utils/silence tt play-once!)
     :shortcut    #{:ctrl :->}}
    ;; ->>|
    {:id          :play-all
@@ -352,10 +357,14 @@
 
 
 (rum/defc playback-controls-view < rum/reactive
-  {:will-mount (fn [state]
-                 (doseq [{:keys [action shortcut]} playback-controls]
-                   )
-                 state)}
+  {:will-mount   (fn [state]
+                   (doseq [{:keys [shortcut action]} playback-controls]
+                     (hga-keyboard/reg-shortcut! shortcut action))
+                   state)
+   :will-unmount (fn [state]
+                   (doseq [{:keys [shortcut]} playback-controls]
+                     (hga-keyboard/unreg-shortcut! shortcut))
+                   state)}
   []
   [:<>
    [:style (css playback-controls-styles)]
