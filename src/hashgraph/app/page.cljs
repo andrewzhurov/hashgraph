@@ -273,10 +273,10 @@
         [:g (inspectable :witness)
          [:circle.witness
           {:key   "witness"
-           :class [(if witness? "present" "absent")
-                        (when (and witness? round-final?) "final")]}]]
+           :class [(if (and witness? (rum/react hga-state/*show-witnesses?)) "present" "absent")
+                   (when (and witness? round-final?) "final")]}]]
 
-        [:g.votes {:class [(when stake-map "present")]}
+        [:g.votes {:class [(when (and stake-map (rum/react hga-state/*show-stake-map?)) "present")]}
          (when stake-map
            (let [member-name->vote (->> concluded-voting :concluded-voting/votes (into {} (map (fn [vote] [(-> vote :vote/from-event hg/creator) vote]))))
                  voted?            (some? concluded-voting)]
@@ -319,8 +319,8 @@
                :fill (if (zero? fill-opacity) "white" fill)}]]))
 
         (when-let [tx (:event/tx event)]
-          [:g {:fill (gc/hsl->hex (gc/lighten (gc/hsl 0 0 0) (* 100 (js-map/get view-state :fill-opacity))))}
-           (event-tx-view tx)])
+          [:g.tx-wrapper {:style {:scale "0.8"}}
+           (event-tx-view tx {:color (gc/hsl->hex (gc/lighten (gc/hsl 0 0 0) (* 100 (js-map/get view-state :fill-opacity))))})])
 
         (event-round-view round)]])))
 
@@ -356,15 +356,17 @@
       (let [played>               (reverse played<)
             ?main-tip             (hg/events>->main-tip played>)
             ?last-concluded-round (some-> ?main-tip hg/->concluded-round)
-            _                     (reset! hga-transitions/*last-concluded-round ?last-concluded-round)
+            _                     (reset! hga-state/*last-concluded-round ?last-concluded-round)
             ?last-received-event  (some-> ?last-concluded-round :concluded-round/last-received-event)
             event->received-event (?received-event->event->received-event ?last-received-event)
             ?witness->cr+cv       (some-> ?last-concluded-round concluded-round->witness->cr+cv)
             ->event-info          (fn [event]
-                                    (let [{r-final? :round/final?
+                                    (let [{r        :round/number
+                                           r-final? :round/final?
                                            r-cr     :round/cr :as round} (hg/->round event ?last-concluded-round)
 
-                                          witness?          (hg/witness? event r-cr)
+                                          witness?
+                                          (hg/witness? event r-cr)
                                           to-receive-votes? (and witness?
                                                                  r-final?)
                                           [?cr ?cv]         (when to-receive-votes?
@@ -383,15 +385,16 @@
                                                             (hg/concluded-round->stake-map r-cr))
                                           ?received-event (event->received-event event)
 
-                                          color           (event->color event)]
-                                      (cond-> (hash-map :event-info/color    color
-                                                        :event-info/event    event
-                                                        :event-info/round    round)
-                                        ?cr               (assoc :event-info/round-concluded? ?cr)
-                                        witness?          (assoc :event-info/witness? witness?)
-                                        to-receive-votes? (assoc :event-info/stake-map stake-map)
-                                        ?cv               (assoc :event-info/concluded-voting ?cv)
-                                        ?received-event   (assoc :event-info/received-event ?received-event))))]
+                                          color           (event->color event)
+                                          event-info      (cond-> (hash-map :event-info/color    color
+                                                                            :event-info/event    event
+                                                                            :event-info/round    round)
+                                                            ?cr               (assoc :event-info/round-concluded? ?cr)
+                                                            witness?          (assoc :event-info/witness? witness?)
+                                                            to-receive-votes? (assoc :event-info/stake-map stake-map)
+                                                            ?cv               (assoc :event-info/concluded-voting ?cv)
+                                                            ?received-event   (assoc :event-info/received-event ?received-event))]
+                                      event-info))]
         [(->> behind>
               (take 10)
               (map ->event-info))
