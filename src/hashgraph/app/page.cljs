@@ -155,7 +155,10 @@
 
     [:.round-number {:font-size (px 14)
                      :fill :gray
-                     :transition (t :fill tt)}
+                     :opacity 0
+                     :transition (t :fill tt
+                                    :opacity tt)}
+     [:&.shown {:opacity 1}]
      [:&.final {:fill :black}]]
 
     [:.votes {:opacity    0
@@ -201,7 +204,8 @@
 (rum/defc event-round-view < rum/static rum/reactive
   [{:round/keys [number final?] :as round}]
   [:g (inspectable round)
-   [:text.round-number {:class [(when final? "final")]
+   [:text.round-number {:class [(when (rum/react hga-state/*show-rounds?) "shown")
+                                (when final? "final")]
                         :x (/ hga-view/wit-r 2)
                         :y (/ (- hga-view/wit-r) 2)}
     number]])
@@ -238,8 +242,7 @@
         y                        (js-map/get view-state :y)
         opacity                  (or (js-map/get view-state :opacity) 0)
         fill-opacity             (or (js-map/get view-state :fill-opacity) 0)
-        {round-final? :round/final?} round
-        share-stake?             (some-> event :event/tx :tx/fn-id (= :share-stake))]
+        {round-final? :round/final?} round]
     (when (not (zero? opacity))
       [:g {:key     (-hash event)
            :opacity opacity}
