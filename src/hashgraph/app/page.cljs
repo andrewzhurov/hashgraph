@@ -206,13 +206,16 @@
     number]])
 
 (rum/defc event-tx-view < rum/static rum/reactive
-  [{:tx/keys [fn-id args]}]
-  (case fn-id
-    :share-stake
-    (hga-icons/transfer {:width     hga-view/evt-s
-                         :height    hga-view/evt-s
-                         :x         (- hga-view/evt-r)
-                         :y         (- hga-view/evt-r)})))
+  [{:tx/keys [fn-id args]} {:keys [color]}]
+  [:svg.tx {:width  hga-view/evt-s
+            :height hga-view/evt-s
+            :x      (- hga-view/evt-r)
+            :y      (- hga-view/evt-r)}
+   (case fn-id
+     :share-stake
+     (hga-icons/icon :solid :transfer :color color)
+     :inc-counter
+     (hga-icons/icon :solid :plus :color color))])
 
 (defn translate-based-on-view-mode [x y]
   (if hga-view/view-mode-horizontal?
@@ -412,7 +415,7 @@
 (rum/defc menu-controls []
   [:div#menu-controls
    [:button#menu-controls-toggler
-    (hga-icons/icon :solid :bars :2xl)]
+    (hga-icons/icon :solid :bars :size :2xl)]
    #_[:button {:on-click #(swap! hga-state/*playback-attached-to-scroll? not)}
     (str (if (rum/react hga-state/*playback-attached-to-scroll?) "detach" "attach") " playback to scroll")]])
 

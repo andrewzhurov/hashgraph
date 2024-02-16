@@ -5,31 +5,14 @@
             ["@fortawesome/fontawesome-svg-core" :refer [library] :as fa-core]
             [goog.object]))
 
-(defn icon-key->icon-name [icon-key]
-  (apply str "fa" (-> (name icon-key)
-                      (clojure.string/split #"-")
-                      (->> (map clojure.string/capitalize)))))
-
-(defn icon [icon-style icon-key & [icon-size]]
-  (let [icon-name (icon-key->icon-name icon-key)]
-    (js/React.createElement
-     FontAwesomeIcon
-     #js {:icon (case icon-style
-                  :solid   (goog.object/get fas icon-name)
-                  :regular (goog.object/get far icon-name))
-          :size (or (some-> icon-size name)
-                    "1x")})))
-
-(defn transfer [opts]
-  [:svg
-   (merge {:xmlns   "http://www.w3.org/2000/svg",
-           :width   "800px",
-           :height  "800px",
-           :viewBox "0 0 48 48"}
-          opts)
+(defn transfer [{:keys [size style]}]
+  [:svg.svg-inline--fa {:xmlns   "http://www.w3.org/2000/svg",
+                        :viewBox "0 0 48 48"
+                        :class   (str "fa-" size)
+                        :fill    (:color style)}
    [:title "transfer"]
-   [:g {:style {:transform "scale(0.75)"
-                :transform-origin :center}}
+   [:g {:style {:transform-origin :center
+                :scale            "0.9"}}
     [:g
      [:rect {:width "48", :height "48", :fill "none"}]]
     [:g
@@ -42,3 +25,26 @@
      [:path
       {:d
        "M34,16v1.2l-2.6-2.6a1.9,1.9,0,0,0-3,.2,2.1,2.1,0,0,0,.2,2.7l6,5.9a1.9,1.9,0,0,0,2.8,0l6-5.9a2.1,2.1,0,0,0,.2-2.7,1.9,1.9,0,0,0-3-.2L38,17.2V16a14,14,0,0,0-28,0v6a2,2,0,0,0,4,0V16a10,10,0,0,1,20,0Z"}]]]])
+
+(defn icon-key->icon-name [icon-key]
+  (apply str "fa" (-> (name icon-key)
+                      (clojure.string/split #"-")
+                      (->> (map clojure.string/capitalize)))))
+
+(defn icon [icon-style icon-key & {:keys [size color]
+                                   :or {size  :1x
+                                        color "black"}}]
+  (let [icon-opts {:size  (name size)
+                   :style {:color color}}]
+    (case icon-key
+      :transfer (transfer icon-opts)
+
+      (let [icon-name (icon-key->icon-name icon-key)
+            icon (case icon-style
+                   :solid   (goog.object/get fas icon-name)
+                   :regular (goog.object/get far icon-name))]
+        (js/React.createElement
+         FontAwesomeIcon
+         (-> icon-opts
+             (assoc :icon icon)
+             clj->js))))))
