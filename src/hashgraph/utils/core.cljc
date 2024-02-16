@@ -439,6 +439,19 @@
          (vreset! on-debounced (js/setTimeout #(apply f args) ms))))))
 
 #?(:cljs
+   (defn silence
+     "Subsequent calls to f within the timeframe from prev call to prev call + ms won't be executed."
+     [ms f]
+     (let [*prev-t (volatile! nil)]
+       (fn [& args]
+         (let [t (cljs.core/system-time)]
+           (when (> t (+ @*prev-t ms))
+             (js/console.log "ran")
+             (vreset! *prev-t t)
+             (apply f args))
+           (js/console.log "RAN"))))))
+
+#?(:cljs
    (defn async-sequential
      "Async calls to this function will complete in the order they were made, one after the other."
      [f]
