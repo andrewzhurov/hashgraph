@@ -8,6 +8,7 @@
    [garden.stylesheet :refer [at-keyframes]]
    [hashgraph.app.icons :as hga-icons]
    [hashgraph.app.view :refer [t] :as hga-view]
+   [hashgraph.app.keyboard :refer [kb-key? kb-keys?] :as hga-keyboard]
    [hashgraph.app.transitions :refer [tt] :as hga-transitions]
    [hashgraph.utils.core
     :refer-macros [defn* l]
@@ -34,35 +35,6 @@
          tm*))))
 
 (def *compact-names? (atom false))
-
-(def key->key-mod
-  {"Shift"         :shift
-   "GroupPrevious" :shift
-   "Alt"           :alt
-   "Meta"          :meta
-   "Control"       :ctrl})
-
-(defn e->?key-mod [keyboard-event] (key->key-mod (.-key keyboard-event)))
-
-(def *key-mods (atom #{}))
-
-(defn key-mod! [k] (swap! *key-mods conj k))
-(defn unkey-mod! [k] (swap! *key-mods disj k))
-
-(defn key-mods? [ks] (assert (set? ks)) (set/subset? ks (if rum.core/*reactions*
-                                                          (rum/react *key-mods)
-                                                          @*key-mods)))
-(defn key-mod? [k] (key-mods? #{k}))
-
-(defn register-keydowns-lister
-  []
-  (.addEventListener js/document "keydown" (fn [e]
-                                             (when-let [key-mod (e->?key-mod e)]
-                                               (key-mod! key-mod))))
-  (.addEventListener js/document "keyup"   (fn [e]
-                                             (when-let [key-mod (e->?key-mod e)]
-                                               (unkey-mod! key-mod)))))
-
 
 ;; (def peeked-init #{})
 ;; (def *peeked (atom peeked-init))
@@ -119,9 +91,9 @@
 (assert (false? (subpath? [1 2 3 4] [1 2 3])))
 
 (declare peek-key)
-(def *peeked (rum/derived-atom [*active-inspectable *key-mods] ::*peeked
-                               (fn [active-inspectable key-mods]
-                                 (when (key-mods peek-key)
+(def *peeked (rum/derived-atom [*active-inspectable hga-keyboard/*kb-keys] ::*peeked
+                               (fn [active-inspectable kb-keys]
+                                 (when (kb-key? peek-key kb-keys)
                                    (:value active-inspectable)))))
 
 (def ->peeked?
@@ -275,7 +247,7 @@
        :on-mouse-move  #(do (.stopPropagation %)
                             (active-inspectable! path el) #_(reset! *inspectable-under-mouse el))
        :on-mouse-leave #(do (inactive-inspectable! path el) #_(reset! *inspectable-under-mouse nil))
-       :on-click       #(when (key-mod? inspect-key)
+       :on-click       #(when (kb-key? inspect-key)
                           (.preventDefault %)
                           (.stopPropagation %)
                           (toggle-inspect! el))
@@ -333,7 +305,7 @@
                       (if-let [default-mode (get table-view :default-mode)]
                         (= :horizontal default-mode)
                         (ms-keys->horizontal? ms-keys)))
-        flip! #(when (key-mod? flip-key)
+        flip! #(when (kb-key? flip-key)
                  (.stopPropagation %)
                  (reset! *horizontal? (not horizontal?)))
 
@@ -471,7 +443,7 @@
         trace-scale! #(do (.stopPropagation %)
                           (swap! *trace-scale
                                  (fn [scale]
-                                   (cond (key-mod? enhance-key) (inc scale)
+                                   (cond (kb-key? enhance-key) (inc scale)
                                          (> scale 1)            1
                                          :else                  2)))
                           (swap! *input-key not))
@@ -544,7 +516,7 @@
                                              s-el))))
         groups     (coll->groups resolved-s)]
     [:div.seqable (merge-attr-maps (inspectable s opts)
-                                   {:on-click #(when (key-mod? :alt)
+                                   {:on-click #(when (kb-key? :alt)
                                                  (.stopPropagation %)
                                                  (swap! *table-view? not))})
      (when show-dt-sym?
@@ -680,7 +652,7 @@
                             (atomic? value))
                       {:on-click #(do (.stopPropagation %)
                                       (swap! *local-expanded-depth (fn [local-expanded-depth]
-                                                                     (cond (key-mod? enhance-key)
+                                                                     (cond (kb-key? enhance-key)
                                                                            (inc current-expanded-depth)
 
                                                                            (or (nil? local-expanded-depth)
