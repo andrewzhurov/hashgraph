@@ -464,7 +464,9 @@
   [:div#page-view {:tab-index  -1} ;; to be able to focus on load ^, so keyboard events trigger scroll
    (hga-home/view)
    (viz-section-view)
-   (controls-view)])
+   (controls-view)
+   (when js/goog.DEBUG
+     (hga-inspector/debug-view))])
 
 (rum/defc view []
   [:div#root-view
