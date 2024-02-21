@@ -158,8 +158,36 @@
   [x y]
   ;; TODO add not in fork
   (or (identical? x y)
-      (ancestor? x y) #_(contains? (see x) y)
-      #_(ancestor? x y)))
+      (ancestor? x y)))
+
+(declare ->round-number)
+(declare witness?)
+(defn ->see-r-paths
+  ([event cr] (->see-r-paths event cr (->round-number event cr)))
+  ([event cr r]
+   (let [evt-r (->round-number event cr)]
+     (if (< evt-r r)
+       (list)
+       (let [prev (concat (some-> event self-parent (->see-r-paths cr r))
+                          (some-> event other-parent (->see-r-paths cr r)))]
+         (-> prev
+             (->> (map (fn [path] (conj path event))))
+             (cond->
+                 (and (= evt-r r) (witness? event cr))
+               (conj [event]))))))))
+
+(declare concluded-round->stake-map)
+(declare many-stake)
+(defn ->strongly-see-r-paths [event cr r]
+  (let [stake-map (concluded-round->stake-map cr)]
+    (->> (->see-r-paths event cr r)
+         (filter (fn [path] (-> (->> path
+                                     (group-by creator)
+                                     keys
+                                     (map stake-map)
+                                     (reduce +))
+                                (> many-stake))))
+         (map-indexed (fn [idx s-path] (with-meta s-path {:strongly-seen-path-idx idx}))))))
 
 #_
 (def ->seen-by
