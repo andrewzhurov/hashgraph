@@ -518,7 +518,7 @@
   (and (voting-round? x y cr)
        (-> (rounds-diff x y cr) (mod c) (= 0))))
 
-(defn signature [evt] (:signature evt))
+(defn signature [evt] (:event/signature evt))
 (defn middle-bit [_sig] 1)
 
 (defn self-witness
