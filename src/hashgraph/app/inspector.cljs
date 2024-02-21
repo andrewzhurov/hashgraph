@@ -13,7 +13,8 @@
    [hashgraph.utils.core
     :refer-macros [defn* l]
     :refer [*parent-log-path* *parent-log-path-logging?* *log-path* *log-path-logging?*
-            debounce lazy-derived-atom atomic? conjs merge-attr-maps]
+            debounce lazy-derived-atom atomic? conjs merge-attr-maps
+            svs? hash= flat flattenable? flatten-all distinct-with]
     :as utils]
    [hashgraph.utils2 :refer-macros [td time3]]
 
@@ -24,108 +25,6 @@
    [clojure.set]
    [cljs.math :refer [floor ceil]]
    [clojure.set :as set]))
-
-#_(type
-   (let [tm (transient (hash-map))]
-     (loop [tm* tm
-            nth 2]
-       (if (pos? nth)
-         (let [new-tm* (assoc! tm* nth nth)]
-           (recur new-tm* (dec nth)))
-         tm*))))
-
-(def *compact-names? (atom false))
-
-;; (def peeked-init #{})
-;; (def *peeked (atom peeked-init))
-;; (defn peek-flush! [] (reset! *peeked peeked-init))
-;; (defn peek-set! [value] (reset! *peeked #{value}) value)
-;; (defn peek! [value] (peek-set! value) #_(swap! *peeked conj value) value)
-;; (defn unpeek! [value] (swap! *peeked disj value) value)
-(def inspected-init [])
-(def *inspected (atom inspected-init))
-(defn inspected-flush! [] (reset! *inspected inspected-init))
-
-(defn inspect   [inspected value] (if (= -1 (-indexOf inspected value))
-                                    (conj inspected value)
-                                    inspected))
-(defn uninspect [inspected value] (vec (remove #(= % value) inspected)))
-
-(defn inspect!   [value] (swap! *inspected inspect   value) value)
-(defn uninspect! [value] (swap! *inspected uninspect value) value)
-
-(defn toggle-inspect! [value]
-  (swap! *inspected (fn [inspected]
-                      (if (= -1 (-indexOf inspected value))
-                        (inspect inspected value)
-                        (uninspect inspected value))))
-  value)
-
-(def ->in?
-  (fn [coll el]
-    (->> coll (some (fn [coll-el]
-                      (or ;; (identical? coll-el el) ;; :inspected/at-time meta messes up identical?
-                       (= (hash coll-el) (hash el))
-                       (and (or (vector? coll-el)
-                                (seq? coll-el)
-                                (set? coll-el))
-                            (->in? coll-el el))))))))
-
-(def active-inspectable-init {})
-(def *active-inspectable (atom active-inspectable-init))
-(defn active-inspectable! [path value] (reset! *active-inspectable {:path path :value value}))
-(defn inactive-inspectable! [path value] (swap! *active-inspectable (fn [active-inspectable]
-                                                                      (if (and (some? active-inspectable)
-                                                                               (identical? path (:path active-inspectable))
-                                                                               (identical? value (:value active-inspectable)))
-                                                                        active-inspectable-init
-                                                                        active-inspectable))))
-(defn subpath? [sub-path path]
-  (boolean (reduce (fn [path-left sub-path-el]
-                     (if (or (empty? path-left)
-                             (not (identical? (first path-left) sub-path-el)))
-                       (reduced false)
-                       (rest path-left)))
-                   path sub-path)))
-(assert (true?  (subpath? [1 2]     [1 2 3])))
-(assert (false? (subpath? [1 2 3 4] [1 2 3])))
-
-(declare peek-key)
-(def *peeked (rum/derived-atom [*active-inspectable hga-keyboard/*kb-keys] ::*peeked
-                               (fn [active-inspectable kb-keys]
-                                 (when (kb-key? peek-key kb-keys)
-                                   (:value active-inspectable)))))
-
-(def ->peeked?
-  (fn [el]
-    (let [peeked (rum/react *peeked)]
-      (and (some? el)
-           (identical? peeked el)))))
-
-(def ->inspected?
-  (fn [el]
-    (when-let [inspected (not-empty (rum/react *inspected))]
-      (and (some? el)
-           (not= -1 (-indexOf inspected el))))))
-
-(def ->in-inspected?
-  (fn [el]
-    (let [inspected (rum/react *inspected)]
-      (->in? inspected el))))
-
-(def ->in-peeked?
-  (fn [el]
-    (when-let [peeked (rum/react *peeked)]
-      (or (= (hash el) (hash peeked))
-          (and (or (vector? peeked)
-                   (set? peeked)
-                   (seq? peeked))
-               (->in? peeked el))))))
-
-(def ->analysis?
-  (fn []
-    (or (not (empty? (rum/react *inspected)))
-        (not (nil? (rum/react *peeked))))))
 
 (def icon-style
   [:& {:cursor          "pointer"
@@ -219,50 +118,244 @@
      [:.child-traces {:display :flex}
       [:.child-trace {}]]]]
 
-   [:.inspectable {:cursor              :pointer
+   [:.inspectable {
                    :unselectable        "on"
                    :user-select         :none ;; /* CSS3 (little to no support) */
                    :-ms-user-select     :none ;; /* IE 10+ */
                    :-moz-user-select    :none ;; /* Gecko (Firefox) */
                    :-webkit-user-select :none ;; /
                    :transition          "background-color 0.4s"}
+    [:&.active {:cursor :pointer}]
     [:&.inspected
      {:background-color "rgba(0,0,0,0.05)"}]
-    [:&.peeked
+    [:&.accented
      {:background-color "rgba(0,0,0,0.1)"}]]])
 
+(def inspector-styles-css (css inspector-styles))
 
+(def *compact-names? (atom false))
+
+(def inspected-init [])
+(def *inspected (atom inspected-init))
+(defn inspected-flush! [] (reset! *inspected inspected-init))
+
+(defn inspected-one? [inspected value-one]
+  (not= -1 (-indexOf inspected value-one)))
+
+(defn inspect-one [inspected value-one]
+  (if (inspected-one? inspected value-one)
+    inspected
+    (conj inspected value-one)))
+
+(defn uninspect-one [inspected value-one]
+  (if (inspected-one? inspected value-one)
+    (vec (remove #(= % value-one) inspected))
+    inspected))
+
+(defn toggle-inspect-one [inspected value-one]
+  (if (inspected-one? inspected value-one)
+    (uninspect-one inspected value-one)
+    (inspect-one inspected value-one)))
+
+(defn inspect [inspected value]
+  (if (flattenable? value)
+    (reduce inspect-one inspected (utils/flatten-all value))
+    (inspect-one inspected value)))
+
+(defn uninspect [inspected value]
+  (if (flattenable? value)
+    (reduce uninspect-one inspected (utils/flatten-all value))
+    (uninspect-one inspected value)))
+
+(defn toggle-inspect [inspected value]
+  (js/console.log inspected value)
+  (if (flattenable? value)
+    (if (some #(inspected-one? inspected %) value)
+      (reduce uninspect inspected value)
+      (reduce inspect inspected value))
+    (if (inspected-one? inspected value)
+      (uninspect-one inspected value)
+      (inspect-one inspected value))))
+
+(defn inspect!        [value] (swap! *inspected inspect        value))
+(defn uninspect!      [value] (swap! *inspected uninspect      value))
+(defn toggle-inspect! [value] (swap! *inspected toggle-inspect value))
+
+(def ->in-one
+  (fn [coll el-one & {:keys [depth]
+                      :or   {depth 4}}]
+    (when-not (zero? depth)
+      (or (and (hash= coll el-one) coll) ;; (identical? coll-el el) ;; :inspected/at-time meta messes up 'identical?'
+          (and (flattenable? coll)
+               (->> coll (some (fn [coll-el] (->in-one coll-el el-one :depth (dec depth))))))
+          #_(and (map? coll) ;; can be used by stake-map viz, breaks other stuff
+                 (map? el)
+                 (not (empty? (set/intersection (set coll) (set el)))))))))
+
+(def ->in
+  (fn [coll el & {:keys [depth]
+                  :or   {depth 4}}]
+    (if (flattenable? el)
+      (when (every? (fn [el-one] (->in-one coll el-one :depth depth)) el)
+        el)
+      (->in-one coll el :depth depth))))
+
+(def active-inspectables-init #{})
+(def *active-inspectables (atom active-inspectables-init))
+(defn active-inspectable!   [path value] (swap! *active-inspectables conj {:path path :value value}))
+(defn inactive-inspectable! [path value] (swap! *active-inspectables disj {:path path :value value}))
+(defn reset-active-inspectables! [] (reset! *active-inspectables active-inspectables-init))
+
+(defn subpath? [sub-path path]
+  (boolean (reduce (fn [path-left sub-path-el]
+                     (if (or (empty? path-left)
+                             (not (identical? (first path-left) sub-path-el)))
+                       (reduced false)
+                       (rest path-left)))
+                   path sub-path)))
+(assert (true?  (subpath? [1 2]     [1 2 3])))
+(assert (false? (subpath? [1 2 3 4] [1 2 3])))
+
+(declare peek-key)
+(declare accent-all)
+(def *peeked-raw (rum/derived-atom [*active-inspectables hga-keyboard/*kb-keys] ::*peeked
+                   (fn [active-inspectables kb-keys]
+                     (when (kb-key? peek-key kb-keys)
+                       (->> active-inspectables
+                            (map :value))))))
+
+(def *accented (rum/derived-atom [*peeked-raw] ::derive-accented
+                 (fn [peeked-raw]
+                   (when (not-empty peeked-raw)
+                     ;; TODO when needed, switch to selecting deepest
+                     (or (and (= 1 (count peeked-raw))
+                              (first peeked-raw))
+                         (or (some (fn [pr-one] (when-not (svs? pr-one) pr-one)) peeked-raw)
+                             (last peeked-raw)))))))
+
+(def *peeked (rum/derived-atom [*peeked-raw] ::derive-peeked
+               (fn [?peeked-raw]
+                 (when ?peeked-raw
+                   (flat ?peeked-raw)))))
+
+(def *inspected-with-peeked (rum/derived-atom [*inspected *peeked] ::derive-inspected-with-peeked
+                              (fn [inspected peeked]
+                                (cond-> inspected
+                                  (not-empty peeked)
+                                  (inspect peeked)))))
+
+(def ->analysis?
+  (fn []
+    (not (empty? (rum/react *inspected-with-peeked)))))
+
+(def ->accented?*
+  (fn [accented el]
+    (hash= accented el)))
+
+(defn accent [el] (with-meta el {:accented? true}))
+(defn accent-all [maybe-coll] (if (svs? maybe-coll)
+                                (map accent maybe-coll)
+                                (accent maybe-coll)))
 
 (def peek-key :ctrl)
 (def inspect-key :ctrl)
 (def flip-key :alt)
 (def enhance-key :shift)
 (def ^:dynamic **inspector-in-view?* (atom true))
+(def ^:dynamic *inspectable-nested?* false)
 
-(defn inspectable [el & [{:keys [in-view? path]
-                          :or   {in-view? true}}]]
+(defn inspectable [el & [{:keys [accentable? nested? passive? in-view? path ->inspected? ->accented?]
+                          :or   {accentable?  true
+                                 nested?      false ;; on-mouse-leave does not always work, leading to inspectables hanging active
+                                 passive?     false
+                                 in-view?     true
+                                 ->inspected? (fn [ips el] (->in ips el))
+                                 ->accented?  ->accented?*
+                                 ;; path     []
+                                 }}]]
   (when in-view?
     (let [analysis? (->analysis?)]
-      {#_:on-mouse-over
-       :on-mouse-move  #(do (.stopPropagation %)
-                            (active-inspectable! path el) #_(reset! *inspectable-under-mouse el))
-       :on-mouse-leave #(do (inactive-inspectable! path el) #_(reset! *inspectable-under-mouse nil))
-       :on-click       #(when (kb-key? inspect-key)
-                          (.preventDefault %)
-                          (.stopPropagation %)
-                          (toggle-inspect! el))
-       :class          (cond-> ["inspectable"]
-                         analysis? (into ["analysis"
-                                          (when (->in-inspected? el) "in-inspected")
-                                          (when (->in-peeked? el) "in-peeked")
-                                          (when (->inspected? el) "inspected")
-                                          (when (->peeked? el) "peeked")]))})))
+      (cond-> {:class (cond-> ["inspectable"
+                               (when nested? "nested")]
+
+                        analysis?
+                        (into (let [ips (rum/react *inspected-with-peeked)
+                                    accented (rum/react *accented)]
+                                ["analysis"
+                                 (when (->inspected? ips el) "inspected")
+                                 (when (and accentable? (->accented? accented el)) "accented")]))
+                        (not passive?)
+                        (conj "active"))}
+        (not passive?)
+        (assoc :on-mouse-move  #(do (when-not nested?
+                                      (.stopPropagation %))
+                                    (active-inspectable! path el))
+               :on-mouse-leave #(if nested?
+                                  (inactive-inspectable! path el)
+                                  (reset-active-inspectables!))
+               :on-click       #(do (js/console.log @hga-keyboard/*kb-keys)
+                                    (when true #_(l (kb-key? inspect-key))
+                                      (.preventDefault %)
+                                      (when-not nested? (.stopPropagation %))
+                                      (toggle-inspect! el))))))))
+
+#_#_
+(def inspectable-opts-defaults
+  {:accentable? true
+   :nested? false
+   :passive? false
+   :in-view? true
+   ;; :path []
+   })
+
+(rum/defcs inspectable-view < rum/reactive
+  {:will-mount (fn [{[_ _ opts] :rum/args :as state}]
+                 (assoc state ::opts (merge inspectable-opts-defaults
+                                            opts)))
+   :did-mount (fn [{[el _opts comp]                            :rum/args
+                    {:keys [passive? nested? path]} ::opts
+                    :as                             state}]
+                (l comp)
+                (let [dom-node (rum/dom-node state)
+                      flat-els  (flat el)]
+                  (when-not passive?
+                    (.addEventListener dom-node "onmousemove" (fn [e]
+                                                                (when-not nested? (.stopPropagation e))
+                                                                (active-inspectable! path flat-els)))
+                    (.addEventListener dom-node "onmouseleave" (fn [e]
+                                                                 (if nested?
+                                                                   (inactive-inspectable! path flat-els)
+                                                                   (reset-active-inspectables!))))
+                    (.addEventListener dom-node "onclick" (fn [e]
+                                                            (js/console.log @hga-keyboard/*kb-keys)
+                                                            (when (l (kb-key? inspect-key))
+                                                              (when-not nested? (.stopPropagation e))
+                                                              (.preventDefault e)
+                                                              (l :toggling)
+                                                              (toggle-inspect! flat-els)))))
+                  (assoc state ::flat-els flat-els)))}
+  [{flat-els                                             ::flat-els
+    {:keys [accentable? nested? passive? in-view? path]} ::opts}
+   _el _opts comp]
+  (let [analysis? (->analysis?)]
+    (into [tag (cond-> ["inspectable"
+                        (when nested? "nested")
+                        (when-not passive? "active")]
+                 analysis?
+                 (into ["analysis"
+                        (when (->in-inspected? flat-els) "in-inspected")
+                        (when (->in-peeked? flat-els) "in-peeked")
+                        (when (and accentable? (->accented? flat-els)) "accented")]))]
+          comps)))
+
 
 
 (def ms-keys-orders
   [[:trace/fn-name :trace/fn-args :trace/result :trace/time :trace/traces]
    [:fn-profile/fn-name :fn-profile/min-time :fn-profile/max-time :fn-profile/medium-time :fn-profile/max-time :fn-profile/total-time :fn-profile/max-time-traces :fn-profile/traces]
-   [:event/creator :event/creation-time :event/self-parent :event/other-parent :event/tx]])
+   [:event/creator :event/creation-time :event/other-parent :event/self-parent :event/tx]
+   [:vote/type :vote/value :vote/stake :vote/voter :vote/votee :vote/atop-cr]
+   [:concluded-round/r :concluded-round/witness-concluded :concluded-round/ws :concluded-round/ufws :concluded-round/votes :concluded-round/etr->les :concluded-round/es-nr :concluded-round/es-r :concluded-round/last-received-event :concluded-round/stake-map :concluded-round/prev-concluded-round]])
 
 (def m-key->idx
   (->> ms-keys-orders
@@ -289,13 +382,6 @@
     (or (cond (and (map? value) (-> value keys first keyword?))
               (-> value keys first namespace keyword))
         :plain)))
-
-(def *a (atom {}))
-(let [m1 (range 100000)]
-  (time (= m1 (with-meta m1 {:k :y}))))
-(add-watch *a :key (fn [& args] (println args)))
-(swap! *a (fn [v] v))
-
 
 (declare inspector)
 (rum/defcs table-view < rum/static rum/reactive (rum/local true ::*horizontal?) (rum/local nil ::*sort-by-key->sort-direction)
@@ -342,14 +428,15 @@
     (if horizontal?
       [:table.horizontal {:on-click flip!}
        [:thead
-        [:th.table-key (inspector ms-type)]
-        (->> ms
-             (map-indexed
-              (fn [idx m]
-                (let [id (hash m)]
-                  [:th (merge {:key id}
-                              (inspectable m))
-                   (inc idx)]))))]
+        [:tr
+         [:th.table-key (inspector ms-type)]
+         (->> ms
+              (map-indexed
+               (fn [idx m]
+                 (let [id (hash m)]
+                   [:th (merge {:key id}
+                               (inspectable m))
+                    (inc idx)]))))]]
 
        [:tbody
         (for [ms-key ordered-ms-keys]
@@ -504,7 +591,7 @@
        reverse))
 
 (rum/defcs inspector-view-seqable < rum/static rum/reactive (rum/local true ::*table-view?)
-  [{::keys [*table-view?]} s {:keys [path expanded-depth] :as opts}]
+  [{::keys [*table-view?]} s {:keys [path expanded-depth plain?] :as opts}]
   (let [[bracket-start bracket-end]
         (cond (seq? s)    ["(" ")"]
               (vector? s) ["[" "]"]
@@ -516,7 +603,7 @@
                                              (rum/react s-el)  ;; losing @ view sign here
                                              s-el))))
         groups     (coll->groups resolved-s)]
-    [:div.seqable (merge-attr-maps (inspectable s opts)
+    [:div.seqable (merge-attr-maps (inspectable s (merge opts (::inspectable (meta s))))
                                    {:on-click #(when (kb-key? :alt)
                                                  (.stopPropagation %)
                                                  (swap! *table-view? not))})
@@ -525,10 +612,10 @@
      (cond (empty? resolved-s)
            ""
 
-           (and (>= (count path) expanded-depth))
+           (>= (count path) expanded-depth)
            [:div.collapsed-content-sym "..."]
 
-           :else ;; show elements
+           (not plain?);; show elements
            (for [{:keys [group-ns group-els]} groups]
              (if group-ns
                (table-view group-els opts)
@@ -540,7 +627,18 @@
                                       (update :expanded-depth inc))]
                          (rum/with-key
                            (inspector s-el opts)
-                           idx))))))))
+                           idx)))))))
+
+           :else
+           (->> resolved-s
+                (map-indexed
+                 (fn [idx s-el]
+                   (let [opts (-> opts
+                                  (update :path conj idx)
+                                  (update :expanded-depth inc))]
+                     (rum/with-key
+                       (inspector s-el opts)
+                       idx))))))
 
      (when show-dt-sym?
        [:div.dt-sym bracket-end])]))
@@ -751,7 +849,6 @@
    :tx
    :round
    :vote
-   :concluded-voting
    :concluded-round
    :received-event
    :plain])
@@ -765,7 +862,7 @@
 
 (def bin-size (/ hga-view/window-size (count m-types)))
 
-(def bins-view-styles
+(def bins-styles
   [[:.bins-view
     [:.bins {:width          "100%"
              :display        :inline-flex
@@ -798,47 +895,52 @@
                   :margin  "0px"
                   :border  :none}]]]]]]])
 
+(def bins-styles-css (css bins-styles))
+
 (rum/defc bins-view < rum/static rum/reactive
   []
   [:div.bins-view
-   [:style (css bins-view-styles)]
-   [:style (css inspector-styles)]
+   [:style bins-styles-css]
+   [:style inspector-styles-css]
    [:div.bins
-    (let [inspected          (rum/react *inspected)
-          ?peeked            (rum/react *peeked)
-          inspectable+peeked (if (nil? ?peeked)
-                               inspected
-                               (inspect inspected ?peeked))
-          flattened-distinct (-> inspectable+peeked
-                                 utils/flatten-all
-                                 distinct)]
-      (when (not-empty flattened-distinct)
-        (let [bins (->> flattened-distinct
+    (let [inspected-with-peeked (rum/react *inspected-with-peeked)]
+      (when (not-empty inspected-with-peeked)
+        (let [bins (->> inspected-with-peeked
                         (group-by ->m-type))]
           (for [m-type m-types]
             (let [bin-items (get bins m-type)]
-              [:div.bin {:class [(when (empty? bin-items) "empty")]}
+              [:div.bin {:key   (str m-type)
+                         :class [(when (empty? bin-items) "empty")]}
                (when (not-empty bin-items)
                  [:<>
+                  ;; TODO empty bin
                   #_
                   [:button.clean {:on-click inspected-flush!
                                   :title    "Clean"}
                    (hga-icons/icon :solid :trash)]
-                  (inspector (with-meta bin-items {::hide-dt-sym? true}) {:expanded-depth 1
-                                                                          :in-view?       true})])])))))]])
+                  (inspector (with-meta bin-items {::hide-dt-sym? true
+                                                   ::inspectable {:passive? true}})
+                             {:expanded-depth 1
+                              :in-view?       true})])])))))]])
 
-(def debug-inspector-view-styles
+(def debug-inspector-styles
   [[:.debug-inspector
-    {:width          "50vw"
+    {:width          "100vw"
+     :max-width      "100vw"
+     :height         :fit-content
+     :max-height     "100vh"
      :display        :flex
      :flex-direction :row
      :position       :fixed
      :left           "0px"
      :top            "0px"
+     :right          "0px"
      :bottom         "0px"
      :overflow-y     :auto
      :overflow-x     :auto
-     :background     "rgba(255,255,255, 0.9)"}
+     }
+    [:>.inspector {:background "rgba(255,255,255, 0.9)"
+                   :z-index         100000}]
     [:button.clean {:width           "18px"
                     :height          "18px"
                     :min-width       "18px"
@@ -847,6 +949,8 @@
                     :justify-content :center
                     :align-items     :center
                     :margin-left     "5px"}]]])
+
+(def debug-inspector-styles-css (css debug-inspector-styles))
 
 (rum/defcs debug-view < rum/static rum/reactive (rum/local 0 ::*open-depth)
   {:did-mount (fn [state]
@@ -857,20 +961,32 @@
   (let [opts {:expanded-depth @*open-depth :path []}]
     [:div.debug-inspector {:on-scroll (debounce 100 on-scroll-end) ;; TODO only use in browsers that do not support :on-scroll-end event
                            }
-     [:style (css debug-inspector-view-styles)]
-     [:style (css inspector-styles)]
-     [:div.logged "Logged"]
-     [:div.controls
-      [:button {:on-click #(utils/log-flush!)} "flush"]
-      [:input {:type          :range
-               :min           0
-               :max           10
-               :default-value @*open-depth
-               :on-change     (debounce 16 #(reset! *open-depth (-> % .-target .-value)))}]]
-     (inspector (rum/react utils/*log) opts)
+     [:style debug-inspector-styles-css]
+     [:style inspector-styles-css]
+     [:div.logged "Logged"
+      [:div.controls
+       [:button {:on-click #(utils/log-flush!)} "flush"]
+       [:input {:type          :range
+                :min           0
+                :max           10
+                :default-value @*open-depth
+                :on-change     (debounce 16 #(reset! *open-depth (-> % .-target .-value)))}]]
+      (inspector (rum/react utils/*log) opts)]
 
-     [:div.fn-profiles "Fn profiles"]
-     (inspector *fn-profiles opts)
+     [:div.fn-profiles "Fn profiles"
+      (inspector *fn-profiles opts)]
 
-     [:div.max-time-trace "Max time trace"]
-     (inspector *max-time-trace opts)]))
+     [:div.max-time-trace "Max time trace"
+      (inspector *max-time-trace opts)]
+
+     (when-let [active-inspectables (not-empty (rum/react *active-inspectables))]
+       [:div "Active inspectables"
+        (inspector active-inspectables (assoc opts :plain? true :expanded-depth 3))])
+
+     (when-let [inspected (not-empty (rum/react *inspected))]
+       [:div "Inspected"
+        (inspector inspected (assoc opts :plain? true))])
+
+     (when-let [peeked (not-empty (rum/react *peeked))]
+       [:div "Peeked"
+        (inspector peeked (assoc opts :plain? true :expanded-depth 1))])]))
