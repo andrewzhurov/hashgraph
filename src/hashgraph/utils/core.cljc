@@ -186,24 +186,50 @@
   (is (= (name->compact-name "?concluded-round->stake-map")
          "?cr->sm")))
 
+(defn svs? [el] (or (seq? el) (vector? el) (set? el)))
+(defn flattenable? [el] (svs? el))
+(defn hash= [el1 el2] (= (hash el1) (hash el2)))
 
-(defn flatten-all [maybe-flattable]
-  (if-not (or (seq? maybe-flattable) (vector? maybe-flattable) (set? maybe-flattable))
-    maybe-flattable
-    (let [flattable maybe-flattable]
-      (->> flattable
+(defn flatten-all [maybe-flattenbale]
+  (if-not (flattenable? maybe-flattenbale)
+    maybe-flattenbale
+    (let [flattenable maybe-flattenbale]
+      (->> flattenable
            (map flatten-all)
-           (reduce (fn [flattened-acc maybe-flattened]
-                     (if-not (vector? maybe-flattened)
-                       (conj flattened-acc maybe-flattened)
-                       (let [flattened maybe-flattened]
-                         (vec (distinct (into flattened-acc flattened))))))
+           (reduce (fn [flattened-acc maybe-flattenbale-el]
+                     (if-not (flattenable? maybe-flattenbale-el)
+                       (conj flattened-acc maybe-flattenbale-el)
+                       (into flattened-acc (flatten-all maybe-flattenbale-el))))
                    [])))))
 
 (deftest flatten-all-test
-  (is (-> (flatten-all ['(1 2) #{3 4} [5 #{5 6 7}]])
+  (is (-> (flatten-all ['(1 2) #{2 3} [3 #{3 4} [4] 4] 4])
           (sort)
-          (= '(1 2 3 4 5 6 7)))))
+          (= '(1 2 2 3 3 3 4 4 4 4)))))
+
+(defn flat [maybe-flattenable]
+  (if (flattenable? maybe-flattenable)
+    (flatten-all maybe-flattenable)
+    [maybe-flattenable]))
+
+#?(:cljs
+   (defn distinct-with [with coll]
+     (reduce (fn [coll-acc el]
+               (let [idx (-indexOf coll-acc el)]
+                 (if (not= -1 idx)
+                   (update coll-acc idx with el)
+                   (conj coll-acc el))))
+             []
+             coll)))
+
+#?(:cljs
+   (deftest distinct-with-test
+     (let [out (distinct-with (fn [el1 el2] (vary-meta el1 merge (meta el2))) [^:l {1 1}     {1 1}
+                                                                                   {2 2} ^:r {2 2}
+                                                                               ^:l {3 3} ^:r {3 3}])]
+       (is (= out [{1 1} {2 2} {3 3}]))
+       (is (= (map meta out) '({:l true} {:r true} {:l true :r true}))))))
+
 
 (defn partition-at-with [with coll]
   (->> coll
@@ -233,6 +259,21 @@
     ([start end]
      (let [rm (range-map start end)]
        (apply hash-map (interleave (range start end) (repeat (- end start) rm)))))))
+
+
+#?(:cljs (defn ->neighbours? [coll els]
+           (when (and (or (vector? coll) (seq? coll) (set? coll))
+                      (or (vector? els) (seq? els) (set? els)))
+             (or (and (vector? coll)
+                      (let [idx1 (-indexOf coll (first els))
+                            idx2 (-indexOf coll (second els))]
+                        (when (and (not= idx1 -1)
+                                   (not= idx2 -1))
+                          (= 1 (- (max idx1 idx2) (min idx1 idx2))))))
+                 (->> coll (some #(when (sequential? %) (->neighbours? % els))))))))
+
+#?(:cljs (deftest ->neighbours?-test
+           (is (true? (->neighbours? [{} [1 2 3 4]] [2 3])))))
 
 
 (defn merge! [m1 m2]
@@ -446,10 +487,8 @@
        (fn [& args]
          (let [t (cljs.core/system-time)]
            (when (> t (+ @*prev-t ms))
-             (js/console.log "ran")
              (vreset! *prev-t t)
-             (apply f args))
-           (js/console.log "RAN"))))))
+             (apply f args)))))))
 
 #?(:cljs
    (defn async-sequential
