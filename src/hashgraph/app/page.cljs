@@ -25,6 +25,7 @@
    [hashgraph.app.transitions :refer [tt] :as hga-transitions]
    [hashgraph.app.infini-events :as hga-infini-events]
    [hashgraph.app.analysis :as hga-analysis]
+   [hashgraph.app.home :as hga-home]
    [hashgraph.app.tutorial :as hga-tutorial]
    [hashgraph.app.inspector :refer [inspectable]
     :as hga-inspector]
@@ -125,11 +126,6 @@
                                     {:display         :inline-flex
                                      :justify-content :center
                                      :align-items     :center})]]
-
-   [:#home {:width      "100vw"
-            :height     "100vh"
-            :min-width  "100vw"
-            :min-height "100vh"}]
 
    [:#viz
     [:.inspectable {:transform-box    :fill-box
@@ -433,10 +429,6 @@
    (hga-inspector/bins-view)
    ])
 
-(rum/defc home-view []
-  [:div#home
-   (hga-utils/plug "home")])
-
 (def scroll-coord (if hga-view/view-mode-horizontal? "left" "top"))
 (rum/defc page-view <
   {:did-mount
@@ -470,7 +462,7 @@
      state)}
   []
   [:div#page-view {:tab-index  -1} ;; to be able to focus on load ^, so keyboard events trigger scroll
-   (home-view)
+   (hga-home/view)
    (viz-section-view)
    (controls-view)])
 
