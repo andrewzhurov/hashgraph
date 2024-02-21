@@ -4,21 +4,30 @@
             [hashgraph.members :as hg-members]
             [hashgraph.utils.core :refer [log!] :refer-macros [l letl] :as utils]))
 
+(def issue-link "https://github.com/andrewzhurov/hashgraph/issues")
+(def discussions-link "https://github.com/andrewzhurov/hashgraph/discussions")
 (def view-mode-horizontal? true)
 (def border-radius 6)
 (def tutorial-size 300)
 (def tutorial-margin 5)
+
+(defn ceil-even [num]
+  (let [ceiled (ceil num)]
+    (cond-> ceiled
+      (odd? ceiled) inc)))
 
 (def window-height js/window.innerHeight)
 (def window-width js/window.innerWidth)
 (def window-size (if view-mode-horizontal? window-width window-height))
 (def viz-size (/ (if view-mode-horizontal? window-height window-width) 3) #_(* (count hg-members/names) (+ evt-s hgs-padding)))
 (def hgs-size (/ viz-size (count hg-members/names)))
-(def evt-s        (-> hgs-size (/ 3)))
-(def hgs-padding  (-> hgs-size (/ 3)))
+(def evt-s        (-> hgs-size (/ 3) ceil-even))
+(def hgs-padding  (-> hgs-size (- evt-s) (/ 2)))
 
 (def evt-r (/ evt-s 2))
 (def sp-padding  (* evt-s 1.5))
+
+(def evt-see-size (-> evt-r (* 2) (- 2)))
 
 ;; flip coords in horizontal view
 (if-not view-mode-horizontal?
