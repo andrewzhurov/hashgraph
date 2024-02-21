@@ -622,63 +622,58 @@
                :vote/atop-cr cr)
      vote-rest)))
 
-(defn vote-see? [x y cr] (= (rounds-diff x y cr) 1))
+(defn vote-see? [x y cr] (= (rounds-diff x y cr) 1)) ;; TODO parameterize with d
 (defn vote-see  [x y cr] (make-vote cr x y :see (boolean (see? x y))))
 
-(declare ->?concluded-voting)
-(declare vote)
-#_#_
-(def vote-copy?
-  (memoize
-   (fn [x y ?cr]
-     (some-> (self-witness x ?cr) (->?concluded-voting y ?cr)))))
-(def vote-copy
-  (memoize
-   (fn [x y cr]
-     (let [vote-copied (vote (self-witness x) y cr)]
-       (make-vote cr x y :copy (:vote/value vote-copied) {:vote/vote-copied vote-copied})))))
+(declare self-witness)
+(declare ->vote)
+(defn vote-copy? [x y cr] (when-let [sw (self-witness x cr)]
+                            (when (voting-round? sw y cr)
+                              (:vote/final? (->vote sw y cr)))))
+(defn vote-copy [x y cr]
+  (let [vote-copied (->vote (self-witness x cr) y cr)]
+    (make-vote cr x y :copy (:vote/value vote-copied) {:vote/final?      true
+                                                       :vote/vote-copied vote-copied})))
 
 (declare votes-stake-fract-true)
 (declare many-stake)
-(defn* vote-coin-flip?
-  [x y cr]
+(defn vote-coin-flip? [x y cr]
   (and (voting-coin-flip-round? x y cr)
        (>= (votes-stake-fract-true x y cr) (-> many-stake (/ 3)))
        (<= (votes-stake-fract-true x y cr) (-> many-stake (/ 3) (* 2)))))
 (defn vote-coin-flip [x y cr] (make-vote cr x y :coin-flip (= 1 (middle-bit (signature x)))))
 
+(declare votes-stake-false)
+(defn vote-for-majority [x y cr]
+  (let [final? (or (> (votes-stake-true x y cr) many-stake)
+                   (> (votes-stake-false x y cr) many-stake))]
+    (make-vote cr x y :for-majority (>= (votes-stake-fract-true x y cr) (/ 1 2)) (when final? {:vote/final? true}))))
 
-(defn* vote-for-majority
-  [x y cr] (make-vote cr x y :for-majority (>= (votes-stake-fract-true x y cr) (/ 1 2))))
-
-(defn* vote
+(defn ->vote
   "Vote of y about fame of z, as known to x."
   [x y cr]
   (cond (vote-see? x y cr)       (vote-see x y cr)
-        ;; (vote-copy? x y cr)      (vote-copy x y cr) ;; done in ?concluded-voting?
+        (vote-copy? x y cr)      (vote-copy x y cr)
         (vote-coin-flip? x y cr) (vote-coin-flip x y cr)
         :else                    (vote-for-majority x y cr)))
 
-(defn votes
+(defn* ^:memoizing ->votes
   "Votes on fame of x from witnesses seen by many in the round before x, based on concluded-round."
   [x y cr]
-  (let [rw->sb-cs (->round-witness->seen-by-creators x (dec (->round-number x cr)) cr)
+  (let [rw->sbcs  (->round-witness->seen-by-creators x (dec (->round-number x cr)) cr)
         stake-map (concluded-round->stake-map cr)]
-    (->> rw->sb-cs
-         (filter (fn [[_rw sb-cs]] (-> sb-cs
-                                       (->> (map stake-map)
-                                            (reduce + 0))
-                                       (> many-stake))))
-         (map (fn [[rw _sb-cs]] (vote rw y cr))))))
+    ;; TODO switch to transduce
+    ;; TODO peek eligible rws of x from (->round x)
+    (->> rw->sbcs
+         (filter (fn [[_rw sbcs]] (-> sbcs
+                                      (->> (map stake-map)
+                                           (reduce + 0))
+                                      (> many-stake))))
+         (map (fn [[rw _sbcs]] (->vote rw y cr))))))
 
-(defn votes-stake-true
-  [x y ?cr]
-  ;; TODO maybe switch to transduce
-  (reduce + 0 (map :vote/stake (filter :vote/value (votes x y ?cr)))))
-
-(defn votes-stake-false
-  [x y ?cr]
-  (reduce + 0 (map :vote/stake (remove :vote/value (votes x y ?cr)))))
+;; TODO maybe switch to transduce
+(defn votes-stake-true  [x y ?cr] (->> (->votes x y ?cr) (filter :vote/value) (map :vote/stake) (reduce + 0)))
+(defn votes-stake-false [x y ?cr] (->> (->votes x y ?cr) (remove :vote/value) (map :vote/stake) (reduce + 0)))
 
 (defn votes-stake-fract-true
   [x y ?cr]
@@ -690,32 +685,10 @@
 (declare many-stake)
 (declare ->concluded-round)
 
-(defn* ^:memoizing ->?concluded-voting
-  "Whether fame of y is concluded, as known to x.
-   Fame is concluded when in a regular round there are votes with sum of their stakes more than many stake."
-  [x y ?cr]
-  (when (voting-round? x y ?cr)
-    (or (when-let [sp-x (self-parent x)]
-          (when-let [prev-concluded-voting (->?concluded-voting sp-x y ?cr)]
-            (when (:concluded-voting/conclusion prev-concluded-voting)
-              prev-concluded-voting)))
-        (when (and (witness? x ?cr)
-                   (not (voting-coin-flip-round? x y ?cr)))
-          (let [?conclusion (or (and (> (votes-stake-true x y ?cr) many-stake) :famous) ;; takes a while
-                                (and (> (votes-stake-false x y ?cr) many-stake) :not-famous))] ;; !!!!! nil conclusions when they are meant to be concluded as not-famous, votes are shown in viz, but not here
-            ;; Maybe log state, instead of returning it. So it can be disabled for a faster and less memory-hungry eval.
-            ;; Maybe just access state ad-hoc by re-creating eval where needed.
-            (cond-> {:concluded-voting/by    x
-                     :concluded-voting/about y
-                     :concluded-voting/votes (votes x y ?cr)}
-              ?conclusion (assoc :concluded-voting/conclusion ?conclusion)))))))
-
-
 ;; cr       -> rw  -> sbc
 ;; cr -> re -> etr -> le
 ;; r        -> w   -> sbc
 ;; they're about the same - events that learned about an event
-
 
 (declare ?received-event->stake-map)
 (declare concluded-round->event-to-receive->learned-events)
@@ -723,7 +696,7 @@
 (declare share-stake-log->stake-map)
 (declare initial-share-stake-log)
 
-;; TODO try with :only-last?
+;; TODO try with :only-last? ;; won't fly on rewind
 (defn* ^:memoizing ->concluded-round
   "Whether the round has fame of all it's witnesses concluded,
    and the previous round, if there is one, been concluded, as known to x."
@@ -736,27 +709,31 @@
         cr
 
         (let [next-cr-r  (inc (:concluded-round/r cr))
-              next-crw-r (-> next-cr-r (+ d) inc)
+              next-crw-r (-> next-cr-r (+ d) inc) ;; perhaps not needed
               wx-r       (->round-number x cr)]
 
           (if (< wx-r next-crw-r)
             cr
 
             ;; x is a witness able to try to conclude
-            (let [ws                      (round-witnesses x next-cr-r cr)
-                  maybe-concluded-votings (->> ws (map (fn [w] (->?concluded-voting x w cr))))]
+            (let [ws    (round-witnesses x next-cr-r cr)
+                  ;; Derranging from the spec by making concluding witness vote,
+                  ;; instead of collecting votes from r-1 witnesses.
+                  ;; The result's the same, code seems to be simpler.
+                  votes (->> ws (map (fn [w] (->vote x w cr))))
+                  ]
 
-              (if-not (every? :concluded-voting/conclusion maybe-concluded-votings)
+              (if-not (->> votes (every? :vote/final?))
                 cr
 
-                (let [ufws    (->> maybe-concluded-votings
-                                   (filter (comp #{:famous} :concluded-voting/conclusion))
-                                   (map :concluded-voting/about))
+                (let [ufws    (->> votes
+                                   (filter :vote/value)
+                                   (map :vote/votee))
                       next-cr (hash-map :concluded-round/r                    next-cr-r
                                         :concluded-round/witness-concluded    x
                                         :concluded-round/ws                   ws
+                                        :concluded-round/votes                votes
                                         :concluded-round/ufws                 ufws
-                                        :concluded-round/concluded-votings    maybe-concluded-votings
                                         :concluded-round/prev-concluded-round cr)
 
                       etr->les (concluded-round->event-to-receive->learned-events next-cr)
