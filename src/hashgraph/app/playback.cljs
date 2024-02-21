@@ -339,21 +339,22 @@
     :shortcut    #{:ctrl :shift :->}}])
 
 (def playback-controls-styles
-  [[:.playback-controls-section {:position        :fixed
-                                 :bottom          (px (+ hga-view/scrollbar-height hga-view/control-margin))
-                                 :left            "0px"
-                                 :right           "0px"
-                                 :display         :flex
-                                 :justify-content :center
-                                 :z-index         100}
-    [:.playback-controls
-     [:.playback-control
-      {:width           "56px"
-       :height          "56px"
-       :display         :inline-flex
-       :justify-content :center
-       :align-items     :center
-       :cursor          :pointer}]]]])
+  [[:.playback-controls {:position        :fixed
+                         :bottom          (px (+ hga-view/scrollbar-height hga-view/control-margin))
+                         :left            "50%"
+                         :right           "0px"
+                         :transform       "translateX(-50%)"
+                         :z-index         100
+                         :width           :fit-content
+                         :display         :flex
+                         :justify-content :center}
+    [:.playback-control
+     {:width           "56px"
+      :height          "56px"
+      :display         :inline-flex
+      :justify-content :center
+      :align-items     :center
+      :cursor          :pointer}]]])
 
 
 (rum/defc playback-controls-view < rum/reactive
@@ -368,15 +369,14 @@
   []
   [:<>
    [:style (css playback-controls-styles)]
-   [:div.playback-controls-section
-    [:div.playback-controls {:class [#_(when (rum/react hga-state/*playback-playing?))]}
-     (for [{:keys [*state on-state] :as playback-control} playback-controls]
-       (let [{:keys [id icon description short action]} (if-not *state
-                                                          playback-control
-                                                          (merge playback-control
-                                                                 (get on-state (rum/react *state))))]
-         [:div.playback-control {:class    [(name id)]
-                                 :key      id
-                                 :title    description
-                                 :on-click action}
-          (or icon short)]))]]])
+   [:div.playback-controls {:class [#_(when (rum/react hga-state/*playback-playing?))]}
+    (for [{:keys [*state on-state] :as playback-control} playback-controls]
+      (let [{:keys [id icon description short action]} (if-not *state
+                                                         playback-control
+                                                         (merge playback-control
+                                                                (get on-state (rum/react *state))))]
+        [:div.playback-control {:class    [(name id)]
+                                :key      id
+                                :title    description
+                                :on-click action}
+         (or icon short)]))]])
