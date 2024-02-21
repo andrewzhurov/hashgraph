@@ -139,7 +139,13 @@
                 :concluded-round/ws
                 (->> (some (fn [w] (when (= (hg/creator w) hg/main-creator) w))))
                 hga-view/evt->y
-                (- hga-view/sp-padding)))))
+                (- hga-view/sp-padding))
+
+        ;; last received evt y
+        (some-> ?cr
+                :concluded-round/last-received-event
+                :received-event/event
+                hga-view/evt->y))))
 
 (def cr-x (hga-view/idx->x (-indexOf hg-members/names hg/main-creator)))
 (def cr-tt-delay (/ tt 20))
