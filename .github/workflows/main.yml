@@ -37,12 +37,8 @@ jobs:
       run: npx shadow-cljs release :app
 
     - name: Setup Pages
-      uses: actions/configure-pages@v1
+      uses: actions/configure-pages@v4
 
-    - name: Upload artifact
-      uses: actions/upload-pages-artifact@v1
-      with:
-        path: './public/'
 
     - name: Fix permissions
       run: |
@@ -50,8 +46,14 @@ jobs:
             echo "::warning title=Invalid file permissions automatically fixed::$line"
           done
 
-    - name: Upload Pages artifact
+    - name: Upload artifact
       uses: actions/upload-pages-artifact@v3
+      with:
+        path: './public/'
+
+    - name: Deploy to GitHub Pages
+      id: deployment
+      uses: actions/deploy-pages@v4
 
     #- name: Deploy to GitHub Pages
     #  id: deployment
