@@ -400,12 +400,13 @@
         ?opx       (other-parent x)]
     (if (and (nil? ?spx)
              (nil? ?opx)) ;; will add (little) cost to all non-bottom events
-      {:round/event    x
-       :round/number   1
-       :round/final?   true
-       ;; many see many see (true) or witness creator -> many see (true) or seen by creators set
-       :round/wc->sbcs {xc (with-meta #{xc} xc-stake)}
-       :round/cr       cr}
+      (hash-map :round/event    x
+                :round/number   1
+                :round/final?   true
+                ;; many see many see (true) or witness creator -> many see (true) or seen by creators set
+
+                :round/wc->sbcs {xc (with-meta #{xc} xc-stake)}
+                :round/cr       cr)
 
       (let [?spx-round (some-> ?spx (->round cr))
             ?opx-round (some-> ?opx (->round cr))
@@ -474,17 +475,19 @@
                                   (assoc wc->sbcs-acc wc new-sbcs-acc))))))))
                     acc
                     to-reduce)
-            r-next?      (true? wc->sbcs)
-            r            (if r-next?  (inc max-p-r) max-p-r)
+            round-next?  (true? wc->sbcs)
+            r            (if round-next? (inc max-p-r) max-p-r)
             round-final? (<= r (or (inc (:concluded-round/r cr)) 1))]
 
-        {:round/event    x
+        (hash-map
+         :round/event    x
          :round/number   r
+         :round/next?    round-next?
          :round/final?   round-final?
-         :round/wc->sbcs (if r-next?
+         :round/wc->sbcs (if round-next?
                            {xc (with-meta #{xc} xc-stake)}
                            wc->sbcs)
-         :round/cr       cr}))))
+         :round/cr       cr)))))
 
 (defn ->round-number
   [x cr]
@@ -611,13 +614,12 @@
   [cr from-event to-event vote-type vote-value & [vote-rest]]
   (let [stake-map (concluded-round->stake-map cr)]
     (merge
-     {:vote/from-event           from-event
-      :vote/to-event             to-event
-      :vote/type                 vote-type
-      :vote/value                vote-value
-      :vote/stake                (get stake-map (:event/creator from-event))
-      :vote/stake-map            stake-map
-      :vote/prev-concluded-round cr}
+     (hash-map :vote/voter   from-event
+               :vote/votee   to-event
+               :vote/type    vote-type
+               :vote/value   vote-value
+               :vote/stake   (get stake-map (:event/creator from-event))
+               :vote/atop-cr cr)
      vote-rest)))
 
 (defn vote-see? [x y cr] (= (rounds-diff x y cr) 1))
