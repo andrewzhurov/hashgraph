@@ -63,11 +63,11 @@
   (fn [names name]
     (vec (disj (set names) name))))
 
-(def share-stake-tx-delay    30)
+(def share-stake-tx-delay    60)
 (def share-stake-tx-n-events 30)
 (defn with-occasional-share-stake-tx [evt events<]
   (let [events-count (- (count events<) share-stake-tx-delay)
-        first-tx? (zero? events-count)]
+        first-tx?    (zero? events-count)]
     (cond-> evt
       (and (not (neg? events-count))
            (zero? (mod events-count share-stake-tx-n-events)))
@@ -80,14 +80,19 @@
                                                  [[1 3] [2 3] [3 3]]))]
                          (make-share-stake-tx from to percent))))))
 
-(def inc-counter-tx-delay    30)
-(def inc-counter-tx-n-events 14)
+(def inc-counter-tx-delay    25)
+(def inc-counter-tx-n-events 24)
+(def *first-inc-counter-tx-issued? (volatile! false))
 (defn with-occasional-inc-counter-tx [evt events<]
   (let [events-count (- (count events<) inc-counter-tx-delay)]
     (cond-> evt
       (and (not (neg? events-count))
-           (zero? (mod events-count inc-counter-tx-n-events)))
+           (if-not true #_ @*first-inc-counter-tx-issued? ;; nah, make the joke random, gets old otherwise
+             (when (= (hg/creator evt) "Elon")
+               (vreset! *first-inc-counter-tx-issued? true))
+             (zero? (mod events-count inc-counter-tx-n-events))))
       (assoc :event/tx {:tx/fn-id :inc-counter}))))
+
 (defn* ^:memoizing events>->c->hg [[event & rest-events>]]
   (if (nil? event)
     (hash-map)
