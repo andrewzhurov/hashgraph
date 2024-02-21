@@ -74,7 +74,8 @@
          #_{:max-height (str "calc((100vh / 3) - " controls-end-height "px)")}])]
 
      [:#viz
-      [:#render {:transition "width 0.5s"}]]
+      [:#render {:overflow :visible
+                 :transition "width 0.5s"}]]
      [:#inspector {:position :sticky
                    :left     "0px"
                    :width    "100vw"}]
@@ -131,24 +132,30 @@
     [:.inspectable {:transform-box    :fill-box
                     :transform-origin :center
                     :transition (t :scale (/ tt 2) :opacity (/ tt 2))}
-     [:&.peeked {:scale 1.3
-                 :filter "drop-shadow(0px 0px 2px rgb(0 0 0 / 0.4))"}]
-     [(gs/& :.analysis (gs/not :.in-peeked) (gs/not :.in-inspected)) {:opacity 0.33}]]]
+     [:&.accented {:scale  1.2
+                   :filter "drop-shadow(0px 0px 2px rgb(0 0 0 / 0.4))"}
+      [:.inspectable.accented {:scale  1
+                               :filter :none}]]
+     [(gs/& :.analysis (gs/not :.inspected) (gs/not :.nested)) {:opacity 0.33}]]]
 
    [:.event-info {;; :filter "drop-shadow(0px 0px 2px rgb(0 0 0 / 0.4))"
                   }
     #_[:* {:transition-timing-function :linear}]
-    [:.witness {:stroke       :black
-                :stroke-width 1
-                :fill         :transparent
-                :opacity      0
-                :r            hga-view/evt-r
-                :transition   (t :opacity tt
-                                 :r tt)}
-     [:&.absent {}]
-     [:&.present {:opacity 0.33
-                  :r       hga-view/wit-r}
-      [:&.final {:opacity 1}]]]
+    [:.witness-view-wrapper
+     [:.witness-view {:stroke       :black
+                      :stroke-width 1
+                      :fill         :transparent
+                      :r            hga-view/evt-r
+                      :opacity      0
+                      :transition   (t :r tt :opacity tt)}
+      [:&.present {:r       hga-view/wit-r
+                   :opacity 0.33}
+       [:&.final {:opacity 1}]]]
+
+     [:.witness-view-hit-slope {:stroke       :transparent
+                                :stroke-width 15
+                                :fill         :transparent
+                                :r            hga-view/wit-r}]]
 
     [:.round-number {:font-size (px 14)
                      :fill :gray
@@ -158,26 +165,14 @@
      [:&.shown {:opacity 1}]
      [:&.final {:fill :black}]]
 
-    [:.votes {:opacity    0
-              :transition (t :opacity tt)
-              :display    :none}
+    [:.votes-wrapper {:opacity    0
+                      :transition (t :opacity tt)
+                      :display    :none}
      [:&.present {:opacity 1
                   :display :block}]
      [:.vote {:transition (t :stroke tt)}]]
     [:&.r-concluded
-     [:.votes {:opacity 1}]]]])
-
-(def key-fn-by-hash {:key-fn (fn [arg] (-hash arg))})
-(def static-by-hash {:should-update (fn [old-state new-state]
-                                      #_(log! [:should-update] {:event         (:event-info/event (first (:rum/args old-state)))
-                                                              :should-update (not= (-hash (first (:rum/args old-state)))
-                                                                                   (-hash (first (:rum/args new-state))))
-                                                              :old-hash      (-hash (first (:rum/args old-state)))
-                                                              :new-hash      (-hash (first (:rum/args new-state)))
-                                                              :old-args      (first (:rum/args old-state))
-                                                              :new-args      (first (:rum/args new-state))})
-                                      (not= (-hash (first (:rum/args old-state)))
-                                            (-hash (first (:rum/args new-state)))))})
+     [:.votes-wrapper {:opacity 1}]]]])
 
 (def vote-circumferance-start+for+end
   (memoize
@@ -198,17 +193,68 @@
          [start-vote-circumferance vote-circumferance end-vote-circumferance])))))
 
 
-(rum/defc event-round-view < rum/static rum/reactive
-  [{:round/keys [number final?] :as round}]
+(rum/defcs event-witness-view <
+  hga-utils/static-by-hashes
+  rum/reactive
+  (rum/local nil ::*paths)
+  [{::keys [*paths]} {:round/keys [final? number cr]} witness? event]
+  (let [witness-shown? (and witness? (rum/react hga-state/*show-witnesses?))]
+    [:g.witness-view-wrapper (when (and witness-shown? #_@*paths)
+                               (inspectable :witness #_@*paths {:passive? true}))
+     [:circle.witness-view {:class [(if witness-shown? "present" "absent")
+                                    (when (and witness? final?) "final")]}]
+     (when witness-shown?
+       ;; even though calc is optimized, highlight of affected ones is darn slow
+       ;; it'll be way faster to highlight them by tweaking their view-state
+       ;; a separate view-state of inspectables can be kept
+       [:circle.witness-view-hit-slope #_{:on-mouse-enter #(when-not @*paths
+                                                             (reset! *paths (hg/->strongly-see-r-paths event cr (dec number))))}])]))
+
+(rum/defcs event-votes-view <
+  hga-utils/static-by-hashes
+  rum/reactive
+  [_ round votes witness? event]
+  (let [round-final? (:round/final? round)
+        round-cr (:round/cr round)]
+    [:g.votes-wrapper {:key "vote-wrapper"
+                       :class [(when (and witness? round-final? (rum/react hga-state/*show-stake-map?)) "present")]}
+     (when (and witness? round-final?)
+       (let [stake-map          (hg/concluded-round->stake-map round-cr)
+             voted?             (some? votes)
+             ?member-name->vote (when voted? (->> votes (into (hash-map) (map (fn [vote] [(-> vote :vote/voter hg/creator) vote])))))]
+         [:g.votes (merge {:key "votes"} (when-not voted? (inspectable stake-map)))
+          (for [[stake-holder stake-amount] stake-map]
+            (let [stake-color-rgb                                 (-> stake-holder hg-members/member-name->person :member/color-rgb)
+                  [start-vote-circumferance vote-circumferance _] (vote-circumferance-start+for+end stake-holder stake-map)
+                  ?vote                                           (get ?member-name->vote stake-holder)
+                  ?vote-value                                     (:vote/value ?vote)]
+              [:g.vote-wrapper (merge {:key stake-holder}
+                                      (when voted? (inspectable (or ?vote {stake-holder "didn't vote"}))))
+               [:circle.vote
+                (cond-> {:r                hga-view/vote-r
+                         :fill             :transparent
+                         :stroke-width     hga-view/vote-stroke-width
+                         :stroke-dasharray (str "0 " start-vote-circumferance " " vote-circumferance " " hga-view/vote-circumferance)
+                         :style            {:stroke (cond (not voted?)
+                                                          (color-rgba-str stake-color-rgb 0.33)
+
+                                                          (and voted? ?vote-value)
+                                                          (color-rgba-str stake-color-rgb 1)
+
+                                                          :else
+                                                          "lightgray")}})]]))]))]))
+
+(rum/defc event-round-view < hga-utils/static-by-hash rum/reactive
+  [{:round/keys [event number next? final? cr] :as round}]
   [:g (inspectable round)
    [:text.round-number {:class [(when (rum/react hga-state/*show-rounds?) "shown")
                                 (when final? "final")]
-                        :x (/ hga-view/wit-r 2)
-                        :y (/ (- hga-view/wit-r) 2)}
+                        :x     (/ hga-view/wit-r 2)
+                        :y     (/ (- hga-view/wit-r) 2)}
     number]])
 
-(rum/defc event-tx-view < rum/static rum/reactive
-  [{:tx/keys [fn-id args]} {:keys [color]}]
+(rum/defc event-tx-view < hga-utils/static-by-hashes rum/reactive
+  [{:tx/keys [fn-id args] :as tx} {:keys [color]}]
   [:svg.tx {:width  hga-view/evt-s
             :height hga-view/evt-s
             :x      (- hga-view/evt-r)
@@ -227,97 +273,74 @@
 (def event-view-key-fn {:key-fn (fn [{:event-info/keys [event]}] (-hash event))})
 (rum/defcs event-view <
   event-view-key-fn
-  static-by-hash
+  hga-utils/static-by-hash
   rum/reactive
   (hga-transitions/mixin ::view-state    (fn [event-info] (some-> event-info :event-info/event -hash)))
   (hga-transitions/mixin ::sp-view-state (fn [event-info] (some-> event-info :event-info/event hg/self-parent -hash)))
   (hga-transitions/mixin ::op-view-state (fn [event-info] (some-> event-info :event-info/event hg/other-parent -hash)))
-  [{::keys [view-state sp-view-state op-view-state]} {:event-info/keys [event color round round-concluded? witness? stake-map concluded-voting received-event] :as event-info}]
+  [{::keys [view-state sp-view-state op-view-state]} {:event-info/keys [event color round witness? cr votes received-event] :as event-info}]
   ;;(js/console.log event-info)
   #_(log! [:render-event-view @hga-playback/*frame] (-hash event))
   (let [x                        (js-map/get view-state :x)
         y                        (js-map/get view-state :y)
         opacity                  (or (js-map/get view-state :opacity) 0)
         fill-opacity             (or (js-map/get view-state :fill-opacity) 0)
-        {round-final? :round/final?} round]
+        {r            :round/number
+         round-final? :round/final?
+         round-next?  :round/next?
+         round-cr     :round/cr} round]
     (when (not (zero? opacity))
-      [:g {:key     (-hash event)
-           :opacity opacity}
+      [:g {:opacity opacity}
 
-       [:g.refs
-        (when sp-view-state
-          [:line {hga-view/x1   x
-                  hga-view/y1   y
-                  hga-view/x2   (js-map/get sp-view-state :x)
-                  hga-view/y2   (js-map/get sp-view-state :y)
-                  :stroke       :lightgray
-                  :stroke-width "2px"
-                  :style        {:opacity (- 1 fill-opacity)}}])
+       (let [ref-opacity (- 1 fill-opacity)]
+         (when-not (zero? ref-opacity)
+           [:g.refs
+            (when sp-view-state
+              [:g.ref.sp (inspectable [event (hg/self-parent event)] {:passive? true :accentable? false})
+               [:line {hga-view/x1   x
+                       hga-view/y1   y
+                       hga-view/x2   (js-map/get sp-view-state :x)
+                       hga-view/y2   (js-map/get sp-view-state :y)
+                       :stroke       :lightgray
+                       :stroke-width "2px"
+                       :style        {:opacity ref-opacity}}]])
 
-        (when op-view-state
-          [:line {hga-view/x1   x
-                  hga-view/y1   y
-                  hga-view/x2   (js-map/get op-view-state :x)
-                  hga-view/y2   (js-map/get op-view-state :y)
-                  :stroke       :lightgray
-                  :stroke-width "2px"
-                  :style        {:opacity (- 1 fill-opacity)}}])]
+            (when op-view-state
+              [:g.ref.op (inspectable [event (hg/other-parent event)] {:passive? true :accentable? false})
+               [:line {hga-view/x1   x
+                       hga-view/y1   y
+                       hga-view/x2   (js-map/get op-view-state :x)
+                       hga-view/y2   (js-map/get op-view-state :y)
+                       :stroke       :lightgray
+                       :stroke-width "2px"
+                       :style        {:opacity ref-opacity}}]])]))
 
        [:g.event-info {:width  (* hga-view/wit-r 2)
                        :height (* hga-view/wit-r 2)
                        :style  {:transform (translate-based-on-view-mode x y)}}
 
-        [:g (inspectable :witness)
-         [:circle.witness
-          {:key   "witness"
-           :class [(if (and witness? (rum/react hga-state/*show-witnesses?)) "present" "absent")
-                   (when (and witness? round-final?) "final")]}]]
+        (event-witness-view round witness? event)
 
-        [:g.votes {:class [(when (and stake-map (rum/react hga-state/*show-stake-map?)) "present")]}
-         (when stake-map
-           (let [member-name->vote (->> concluded-voting :concluded-voting/votes (into {} (map (fn [vote] [(-> vote :vote/from-event hg/creator) vote]))))
-                 voted?            (some? concluded-voting)]
-             (for [[stake-holder stake-amount] stake-map]
-               (let [member                                                                (-> stake-holder hg-members/member-name->person)
-                     [start-vote-circumferance vote-circumferance _end-vote-circumferance] (vote-circumferance-start+for+end stake-holder stake-map)
-                     ?vote                                                                 (member-name->vote stake-holder)
-                     ?vote-value                                                           (:vote/value ?vote)]
-                 [:g {:key stake-holder}
-                  [:g (inspectable (if ?vote ?vote {:stake/holder stake-holder
-                                                    :stake/amount stake-amount}))
-                   [:circle.vote {:r                hga-view/vote-r
-                                  :fill             :transparent
-                                  :stroke-width     hga-view/vote-stroke-width
-                                  :stroke-dasharray (str "0 " start-vote-circumferance " " vote-circumferance " " hga-view/vote-circumferance)
-                                  :style            {:stroke (cond (not voted?)
-                                                                   (color-rgba-str (:member/color-rgb member) 0.33)
-
-                                                                   (and voted? ?vote-value)
-                                                                   (color-rgba-str (:member/color-rgb member) 1)
-
-                                                                   :else
-                                                                   "lightgray")}}]]]))))]
+        (event-votes-view round votes witness? event)
 
         ;; always rendering white background to hide refs
-        [:g (inspectable event)
-         [:circle.event
-          {:key          "event-refs-hide"
-           :r            hga-view/evt-r
-           :stroke       color
-           :stroke-width 1
-           :fill         "white"}]]
-
-        (when-not (zero? fill-opacity)
-          (let [{:keys [red green blue]} (js-map/get view-state :fill)
-                fill                     (str "rgba("red","green","blue","fill-opacity")")]
-            [:g (inspectable received-event)
-             [:circle.received-event
-              {:r    hga-view/evt-r
-               :fill (if (zero? fill-opacity) "white" fill)}]]))
-
-        (when-let [tx (:event/tx event)]
-          [:g.tx-wrapper {:style {:scale "0.8"}}
-           (event-tx-view tx {:color (gc/hsl->hex (gc/lighten (gc/hsl 0 0 0) (* 100 (js-map/get view-state :fill-opacity))))})])
+        (let [{:keys [red green blue]
+               :or   {red 255 green 255 blue 255}} (js-map/get view-state :fill)
+              fill-opacity-percent (* 100 fill-opacity)
+              tx (:event/tx event)]
+          [:g (inspectable (cond-> [event]
+                             received-event (conj received-event)
+                             tx             (conj tx))
+                           {:->inspected?   (fn [ips els]      (->> els (some (fn [el] (hga-inspector/->in ips el)))))
+                            :->accented?    (fn [accented els] (->> els (some (fn [el] (hga-inspector/->in accented el)))))})
+           [:circle.event {:class        (when received-event "received")
+                           :r            hga-view/evt-r
+                           :stroke       color
+                           :stroke-width 1
+                           :fill         (gc/hsl->hex (gc/lighten (gc/rgb red green blue) (- 100 fill-opacity-percent)))}]
+           (when tx
+             [:g.tx-wrapper {:style {:scale "0.8"}}
+              (event-tx-view tx {:color (gc/hsl->hex (gc/lighten (gc/hsl 0 0 0) fill-opacity-percent))})])])
 
         (event-round-view round)]])))
 
