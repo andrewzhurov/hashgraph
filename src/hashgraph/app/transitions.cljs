@@ -31,8 +31,8 @@
 ;; These states are used to trigger view transitions.
 ;; *just-played< events transition from other-parent (as though they are being sent over the wire).
 ;; *just-rewinded> events transition from their current position back to other-parent (as though time's rewinded)
-(defonce view-id->view-state (js-map))
-(defonce view-state->with-t? (js-map))
+(def view-id->view-state (js-map))
+(def view-state->with-t? (js-map))
 
 #_(js/console.log (js-map/js-map->clj-map view-id->view-state))
 #_(js/console.log (js-map/js-map->clj-map view-state->with-t?))
