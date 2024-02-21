@@ -182,6 +182,27 @@ Ok for now. No good solutions found.
 *** DONE SOLUTION add scroll inside tables
 **** PROBLEM when no more table scroll is availabel - it'll affect the viz scroll
 ***** SOLUTION catch scroll events, stop propagation
+* TODO make algorithm understandable
+** TODO capture in data the reason round increases
+** TODO capture in data the reason of becoming a witness
+* TODO what goes on the home section?
+** option1
+*** problem definition - conflicting transactions
+**** solution - total order, async byzantine
+***** method - hashgraph
+***** method - virtual voting
+*** links to resources
+*** see for yourself ->
+*** total
+Making a distributed ledger,
+having total order of transactions,
+powered by an
+asynchronous byzantine-fault tolerant
+virtual voting
+atop a
+HASHGRAPH
+of gossip.
+It's all there's to it, see for yourself ->
 
 * objectives
 ** understand the algo to see how it can be applied in NG
