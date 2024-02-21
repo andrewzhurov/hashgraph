@@ -70,3 +70,57 @@
   (js/requestAnimationFrame #(when (while-pred)
                                (per-animation-frame-cb)
                                (per-animation-frame-while per-animation-frame-cb while-pred))))
+
+
+
+(def static-by-hashes
+  {:should-update (fn [old-state new-state]
+                    (let [old-args (:rum/args old-state)
+                          new-args (:rum/args new-state)]
+                      (or (not= (count old-args) (count new-args))
+                          (loop [old-args-left old-args
+                                 new-args-left new-args]
+                            (cond (empty? new-args-left)
+                                  false
+
+                                  (not= (hash (first old-args-left))
+                                        (hash (first new-args-left)))
+                                  true
+
+                                  :else
+                                  (recur (rest old-args-left) (rest new-args-left)))))))})
+
+(rum/defc static-by-hashes-testee-comp <
+  static-by-hashes
+  [args]
+  (l [:testee args])
+  [:div (pr-str args)])
+
+(rum/defcs static-by-hashes-tester-comp < (rum/local 0 ::*counter) (rum/local 0 ::*counter2)
+  [{::keys [*counter *counter2]}]
+  (l [:tester @*counter @*counter2])
+  [:div {:style {:position         :fixed
+                 :z-index          100000
+                 :background-color "white"}}
+   [:button {:on-click #(swap! *counter inc)}
+    "inc 1st"]
+   [:button {:on-click #(swap! *counter2 inc)}
+    "inc 2nd"]
+   [:button {:on-click #(reset! *counter @*counter)}
+    "same 1st"]
+   [:button {:on-click #(reset! *counter @*counter)}
+    "same 2nd"]
+   (static-by-hashes-testee-comp @*counter @*counter)])
+
+
+(def key-fn-by-hash {:key-fn (fn [arg] (-hash arg))})
+(def static-by-hash {:should-update (fn [old-state new-state]
+                                      #_(log! [:should-update] {:event         (:event-info/event (first (:rum/args old-state)))
+                                                              :should-update (not= (-hash (first (:rum/args old-state)))
+                                                                                   (-hash (first (:rum/args new-state))))
+                                                              :old-hash      (-hash (first (:rum/args old-state)))
+                                                              :new-hash      (-hash (first (:rum/args new-state)))
+                                                              :old-args      (first (:rum/args old-state))
+                                                              :new-args      (first (:rum/args new-state))})
+                                      (not= (-hash (first (:rum/args old-state)))
+                                            (-hash (first (:rum/args new-state)))))})
