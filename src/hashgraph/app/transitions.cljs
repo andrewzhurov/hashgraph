@@ -1,5 +1,5 @@
 (ns hashgraph.app.transitions
-  (:require-macros [hashgraph.utils.js-map :refer [js-map] :as js-map])
+  (:require-macros [hashgraph.utils.js-map :refer [js-map] :as js-map] :reload-all)
   (:require-macros [hashgraph.app.transitions :refer [t!]])
   (:require [rum.core :as rum]
             [goog.object]

@@ -1,6 +1,7 @@
 (ns hashgraph.utils.js-map-test
   (:require-macros [hashgraph.utils.js-map :refer [js-map] :as js-map]
-                   [hashgraph.utils.core :as utils])
+                   [hashgraph.utils.core :as utils]
+                   :reload-all)
   (:require [clojure.test :refer [deftest testing is are run-tests]]
             [hashgraph.utils.js-map]))
 

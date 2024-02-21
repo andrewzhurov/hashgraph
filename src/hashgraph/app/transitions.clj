@@ -1,5 +1,5 @@
 (ns hashgraph.app.transitions
-  (:require [hashgraph.utils.js-map :as js-map]))
+  (:require [hashgraph.utils.js-map :as js-map] :reload-all))
 
 (defmacro t! [view-state & ts]
   (let [desired (gensym "desired")

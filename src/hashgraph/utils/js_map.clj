@@ -2,7 +2,7 @@
   "Clojure interface to js/Map, optimized with macro-time keyword-key->idx substitution.
    Be sure to not use with runtime resolvable keyword keys."
   (:refer-clojure :exclude [assoc! dissoc! get get-in empty? contains? keys])
-  (:require [hashgraph.utils.js-map :as js-map]))
+  (:require [hashgraph.utils.js-map :as js-map] :reload-all))
 
 (def *keyword-key->js-map-key (atom (hash-map)))
 (defn key->js-map-key [key]

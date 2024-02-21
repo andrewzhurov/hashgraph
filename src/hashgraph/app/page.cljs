@@ -1,6 +1,7 @@
 (ns hashgraph.app.page
   (:require-macros [hashgraph.utils.js-map :as js-map]
-                   [hashgraph.app.inspector :refer [inspectable*]])
+                   [hashgraph.app.inspector :refer [inspectable*]]
+                   :reload-all)
   (:require
    [clojure.string :as str]
    [clojure.set :as set]
