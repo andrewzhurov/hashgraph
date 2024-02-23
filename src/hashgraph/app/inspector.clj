@@ -18,9 +18,11 @@
                 :on-mouse-leave `(fn [] (inactive-inspectable! (get ~opts :path) ~el)))))
 
 (defmacro inspectable-el [value opts & el-builder]
-  `(let [el#                   (binding [*inspectable-nested?* true] ~@el-builder)
+  `(let [el#                   (binding [*inspectable-nested-depth* (inc *inspectable-nested-depth*)] ~@el-builder)
          tag#                  (first el#)
-         inspectable-attr-map# (inspectable ~value (assoc ~opts :nested? *inspectable-nested?*))]
+         inspectable-attr-map# (inspectable ~value (assoc ~opts
+                                                          :nested?      (some? *inspectable-nested-depth*)
+                                                          :nested-depth (or *inspectable-nested-depth* 0)))]
      (if-not (map? (second el#))
        (into [tag# inspectable-attr-map#] (rest el#))
        (into [tag# (utils/merge-attr-maps (second el#) inspectable-attr-map#)] (rest (rest el#))))))

@@ -3,5 +3,5 @@
             #_[hashgraph.utils.core :refer [hash=]]))
 
 (defmacro i [el el-name & more]
-  `(hga-inspector/inspectable-el ~el {:->inspected? (fn [ips# val#] (hashgraph.utils.core/hash= ips# val#))}
+  `(hga-inspector/inspectable-el ~el {:->inspected? (fn [ips# val#] (hga-inspector/->in ips# val#))}
                                  [:div.ref ~el-name ~@more]))

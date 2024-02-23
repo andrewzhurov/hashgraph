@@ -196,7 +196,7 @@
   (fn [coll el & {:keys [depth]
                   :or   {depth 4}}]
     (if (flattenable? el)
-      (when (every? (fn [el-one] (->in-one coll el-one :depth depth)) el)
+      (when (every? (fn [el-one] (->in-one coll el-one :depth depth)) (flatten-all el))
         el)
       (->in-one coll el :depth depth))))
 
@@ -227,16 +227,16 @@
 (def *accented (rum/derived-atom [*peeked-raw] ::derive-accented
                  (fn [peeked-raw]
                    (when (not-empty peeked-raw)
-                     ;; TODO when needed, switch to selecting deepest
-                     (or (and (= 1 (count peeked-raw))
-                              (first peeked-raw))
-                         (or (some (fn [pr-one] (when-not (svs? pr-one) pr-one)) peeked-raw)
-                             (last peeked-raw)))))))
+                     (->> peeked-raw
+                          (sort-by (comp :nested-depth meta) >)
+                          (first))))))
 
 (def *peeked (rum/derived-atom [*peeked-raw] ::derive-peeked
                (fn [?peeked-raw]
                  (when ?peeked-raw
-                   (flat ?peeked-raw)))))
+                   (->> ?peeked-raw
+                        (flat)
+                        (distinct-with (fn [el1 el2] (vary-meta el1 merge (meta el2)))))))))
 
 (def *inspected-with-peeked (rum/derived-atom [*inspected *peeked] ::derive-inspected-with-peeked
                               (fn [inspected peeked]
@@ -249,7 +249,7 @@
     (not (empty? (rum/react *inspected-with-peeked)))))
 
 (def ->accented?*
-  (fn [accented el]
+  (fn [accented ips el]
     (hash= accented el)))
 
 (defn accent [el] (with-meta el {:accented? true}))
@@ -263,8 +263,9 @@
 (def enhance-key :shift)
 (def ^:dynamic **inspector-in-view?* (atom true))
 (def ^:dynamic *inspectable-nested?* false)
+(def ^:dynamic *inspectable-nested-depth* nil)
 
-(defn inspectable [el & [{:keys [accentable? nested? passive? in-view? path ->inspected? ->accented?]
+(defn inspectable [el & [{:keys [accentable? nested? nested-depth passive? in-view? path ->inspected? ->accented?]
                           :or   {accentable?  true
                                  nested?      false ;; on-mouse-leave does not always work, leading to inspectables hanging active
                                  passive?     false
@@ -283,28 +284,26 @@
                                     accented (rum/react *accented)]
                                 ["analysis"
                                  (when (->inspected? ips el) "inspected")
-                                 (when (and accentable? (->accented? accented el)) "accented")]))
+                                 (when (and accentable? (->accented? accented ips el)) "accented")]))
                         (not passive?)
                         (conj "active"))}
         (not passive?)
-        (assoc :on-mouse-move  #(do (when-not nested?
-                                      (.stopPropagation %))
-                                    (active-inspectable! path el))
+        (assoc :on-mouse-enter #(do (when-not nested? (.stopPropagation %))
+                                    (active-inspectable! path (with-meta el {:nested-depth nested-depth})))
                :on-mouse-leave #(if nested?
                                   (inactive-inspectable! path el)
                                   (reset-active-inspectables!))
-               :on-click       #(do (js/console.log @hga-keyboard/*kb-keys)
-                                    (when true #_(l (kb-key? inspect-key))
-                                      (.preventDefault %)
-                                      (when-not nested? (.stopPropagation %))
-                                      (toggle-inspect! el))))))))
+               :on-click       #(when-not nested?
+                                  (.preventDefault %)
+                                  (when-not nested? (.stopPropagation %))
+                                  (toggle-inspect! el)))))))
 
 #_#_
 (def inspectable-opts-defaults
   {:accentable? true
-   :nested? false
-   :passive? false
-   :in-view? true
+   :nested?     false
+   :passive?    false
+   :in-view?    true
    ;; :path []
    })
 
