@@ -846,6 +846,7 @@
 (def m-types
   [:event
    :tx
+   :sees
    :round
    :vote
    :concluded-round
