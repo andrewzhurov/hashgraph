@@ -386,7 +386,7 @@
       (let [played>               (reverse played<)
             ?main-tip             (hg/events>->main-tip played>)
             ?last-concluded-round (some-> ?main-tip hg/->concluded-round)
-            ?concluding-main-tip  (hg/witness-or-self-witness ?main-tip ?last-concluded-round)
+            ?concluding-main-tip  ?main-tip
             _                     (reset! hga-state/*last-concluded-round ?last-concluded-round)
             ?last-received-event  (some-> ?last-concluded-round :concluded-round/last-received-event)
             event->received-event (?received-event->event->received-event ?last-received-event)
