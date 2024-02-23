@@ -197,13 +197,13 @@
             ::args      [r1-ws]}))))
 
    (rum/defc tutor-strongly-seeing-view < rum/reactive
-     [event m1-path m2-path]
-     (let [m1-evt (first m1-path)
-           m2-evt (first m2-path)
+     [event sees-m1 sees-m2]
+     (let [m1-evt (:sees/seee sees-m1)
+           m2-evt (:sees/seee sees-m2)
            m1     (hg/creator m1-evt)
            m2     (hg/creator m2-evt)
-           ss-m1  (i m1-path "strongly sees " (i m1-evt (str m1 "'s event")))
-           ss-m2  (i m2-path "strongly sees " (i m2-evt (str m2 "'s event")))]
+           ss-m1  (i [(:sees/path sees-m1) sees-m1] "strongly sees " (i m1-evt (str m1 "'s event")))
+           ss-m2  (i [(:sees/path sees-m2) sees-m2] "strongly sees " (i m2-evt (str m2 "'s event")))]
        [:div.tutor
         "An event may see that many members see another event, a so-called 'strongly see'.\n\n"
 
@@ -212,22 +212,22 @@
    (fn [event]
      (when (-> event meta ::to-tutor (= ::strongly-seeing))
        (let [cr                (hg/->concluded-round event)
-             [m1-path m2-path] (hg/->strongly-see-r-paths event cr 1)]
+             [sees-m1 sees-m2] (hg/->strongly-see-r-paths event cr 1)]
          {::on-event event
           ::y        (->y event)
-          ::args     [event m1-path m2-path]})))
+          ::args     [event sees-m1 sees-m2]})))
 
    (rum/defc tutor-next-round-view < rum/reactive
-     [event round [m1-path m2-path m3-path]]
-     (let [m1-evt (first m1-path)
-           m2-evt (first m2-path)
-           m3-evt (first m3-path)
+     [event round [seen-m1 seen-m2 seen-m3]]
+     (let [m1-evt (:sees/seee seen-m1)
+           m2-evt (:sees/seee seen-m2)
+           m3-evt (:sees/seee seen-m3)
            m1     (hg/creator m1-evt)
            m2     (hg/creator m2-evt)
            m3     (hg/creator m3-evt)
-           ss-m1  (i m1-path "strongly sees " (i m1-evt (str m1 "'s event")))
-           ss-m2  (i m2-path "strongly sees " (i m2-evt (str m2 "'s event")))
-           ss-m3  (i m3-path "strongly sees " (i m3-evt (str m3 "'s event")))]
+           ss-m1  (i [(:sees/path seen-m1) seen-m1] "strongly sees " (i m1-evt (str m1 "'s event")))
+           ss-m2  (i [(:sees/path seen-m2) seen-m2] "strongly sees " (i m2-evt (str m2 "'s event")))
+           ss-m3  (i [(:sees/path seen-m3) seen-m3] "strongly sees " (i m3-evt (str m3 "'s event")))]
        [:div.tutor
         (i round "Round number") " increases when an " (i event "event") " strongly sees events of a previous round from many members.\n\n"
 
