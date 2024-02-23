@@ -81,17 +81,11 @@
                              :bottom           "30px"
                              :transform        "translateX(-50%)"
                              :box-sizing       :border-box
-                             :max-width        (px hga-view/tutorial-size)
                              :background-color :lavender
-                             :opacity          0
                              :transition       (t :opacity (/ tt 1.5) "ease-in" (/ tt 5))
-                             :display          :none
                              :z-index          0})
-     [(gs/& (gs/not :.seen-latest)) [:*  {:cursor :default}]]
-     [:&.seen {:display :block}]
-     [:&.seen-latest {:opacity 1
-                      :z-index 1}]
      [:.tutor {:white-space :pre-line}
+      [(gs/& (gs/not :.unbound)) {:max-width (px hga-view/tutorial-size)}]
       [:.inspectable {:color     :maroon
                       :min-width :fit-content
                       :max-width :fit-content
@@ -134,8 +128,12 @@
 
    (rum/defc tutor-other-parent-view < rum/reactive
      [event]
-     [:div.tutor
-      "And gossip them to others.\n On receival of an event from another member a " (i event "new event") " is created, referencing just received " (i (hg/other-parent event) "other-parent event") "."])
+     [:div.tutor.unbound
+      "And gossip them to others.\n\n"
+
+      "On receival of an event from another member\n"
+      "a " (i event "new event") " is created, referencing\n"
+      "just received " (i (hg/other-parent event) "other-parent event") "."])
    (fn [event]
      (when (hg/other-parent event)
        {::on-event event
@@ -145,13 +143,18 @@
 
    (rum/defc tutor-self-parent-view < rum/reactive
      [event]
-     [:div.tutor
-      "When " (i event "an event") " is created it also references previously created by that member event, if there's one - a so-called " (i (hg/self-parent event) "self-parent event") ".\n\n"
+     [:div.tutor.unbound
+      "When " (i event "an event") " is created it also references\n"
+      "previously created by that member event, if there's one,\n"
+      "a so-called " (i (hg/self-parent event) "self-parent event") ".\n\n"
 
-      "This alone builds a structure of how members communicated with each other - a (hash)graph of gossip!\n\n"
+      "This alone builds the structure of how members\n"
+      "communicated with each other - a (hash)graph of gossip!\n\n"
+
       "Well, was it shorter than expected? Sorry to disapoint. -_-\n"
       "...\n"
-      "...okaay! We didn't get events ordered yet, now to the virtual voting bit.. it'll be more juicy."])
+      "...okaay! We didn't get events ordered yet,\n"
+      "now to the virtual voting bit.. it'll be more juicy."])
    (fn [event]
      (when (hg/self-parent event)
        {::type ::self-parent
@@ -257,7 +260,7 @@
 
    (rum/defc tutor-witnesses-will-vote-view < rum/reactive
      [r2-ws r1-ws]
-     [:div.tutor
+     [:div.tutor.unbound
       "These " (i r2-ws "round 2 witnesses") " will vote on fame\n"
       "of the " (i r1-ws "round 1 witnesses") ".\n"
       "Voting will be done by a round 3 witness.\n\n"
@@ -276,10 +279,9 @@
 
    (rum/defc tutor-votes-view < rum/reactive
      [r3-mw r2-ws r1-ws votes]
-     [:div.tutor
+     [:div.tutor.unbound
       (i r3-mw "This round 3 witness") " ran virtual voting regarding fame\n"
-      "of " (i r1-ws "the round 1 witnesses") ",\n"
-      "by deriving " (i votes "virtual votes") " \n"
+      "of " (i r1-ws "the round 1 witnesses") " by deriving " (i votes "virtual votes") " \n"
       "from " (i r2-ws "the round 2 witnesses") ".\n\n"
 
       "Witness is considered to be famous when it received > 2/3 'famous' votes.\n"
@@ -302,7 +304,7 @@
 
    (rum/defc tutor-why-all-of-this-p1-view
      []
-     [:div.tutor
+     [:div.tutor.unbound
       "Phew? Been plenty enough?. Well, sorry, it's almost all there.\n"
       "But what's all this hussle for, again?\n\n"
 
@@ -317,10 +319,12 @@
 
    (rum/defc tutor-why-all-of-this-p2-view
      []
-     [:div.tutor
-      "But let's not PaNiC! One of the solutions to that is to find total order of transactions."
+     [:div.tutor.unbound
+      "But let's not PaNiC! One of the solutions to that is to find total order of transactions.\n\n"
+
       "... and having concluded fame of round witnesses we're able to do just that,\n"
-      "events that are seen by all famous witnesses can be put in total order, ha!\n"
+      "events that are seen by all famous witnesses can be put in total order, ha!\n\n"
+
       "But what _is_ that order? How _are_ they sorted??"])
    (fn [event]
      (when (-> event meta ::to-tutor (= ::why-all-this-p2))
@@ -330,7 +334,7 @@
 
    (rum/defc tutor-why-all-of-this-p3-view
      []
-     [:div.tutor
+     [:div.tutor.unbound
       "That's a fair question, let's try to give a fair answer.\n"
       "We could derive 'received time' of an event as median time of the events\n"
       "from each member that first learned about it - this way whatever event gets\n"
@@ -345,8 +349,10 @@
      [r4-cw r2-cr]
      (let [r2-ufws (-> (:concluded-round/ufws r2-cr) hga-inspector/accent-all)
            r2-er   (-> (:concluded-round/es-r r2-cr) hga-inspector/accent-all)]
-       [:div.tutor
-        "And so, "(i r2-er "those events") " that are seen by all " (i r2-ufws "unique famous witnesses of a round") " are received. Ordered by their 'received time'."])) ;; TODO TADA!
+       [:div.tutor.unbound
+        "And so, "(i r2-er "those events") " that are seen\n"
+        "by all " (i r2-ufws "unique famous witnesses of a round") " are received,\n"
+        "ordered by their 'received time'."])) ;; TODO TADA!
    (fn [event]
      (when (= hg/main-creator (hg/creator event))
        (let [cr (hg/->concluded-round event)
@@ -372,10 +378,9 @@
 
    (rum/defc tutor-events-not-received-view < rum/reactive
      [cr es-nr ufws]
-     [:div.tutor
-      "When " (i cr "round's been concluded") " there may be "
-      (i es-nr "some events that weren't received") ", that is because "
-      "they weren't seen by all " (i ufws "the unique famous witnesses") ".\n"
+     [:div.tutor.unbound
+      "When " (i cr "round's been concluded") " there may be " (i es-nr "some events that weren't received") ",\n"
+      "that is because they weren't seen by all " (i ufws "the unique famous witnesses") ".\n\n"
       "Oh, well, bad for them. Better luck next time.\n"
       "Okaay, no fret, they'll be received in the next rounds.. why would we drop them?!"])
    (fn [event]
@@ -391,14 +396,19 @@
               ::y        (->y last-e-nr)
               ::args     [cr es-nr ufws]})))))
 
-   (rum/defc tutor-inc-counter-tx-view < rum/reactive [event+tx]
-     [:div.tutor
+   (rum/defc tutor-inc-counter-tx-view < rum/reactive
+     [[event tx :as event+tx]]
+     [:div.tutor.unbound
       "Event may carry a transaction,\n"
-      "that is to be executed when event gets received (\"aha, finally the useful bit!\"? yeeas, the whole point of this excercise).\n\n"
+      "that is to be executed when event gets received.\n\n"
+
+      "\"Aha, finally the useful bit!\"?\n"
+      "Yeeas, the whole point of this excercise.\n\n"
 
       (i event+tx "This event's transaction") ", issued by " (hg/creator event) ",\n"
       "increments a counter by 1.\n"
-      "Not much of a transaction, I know.. " (hg/creator event) " could come up with something more interesting."])
+      "Not much of a transaction, I know.. \n"
+      (hg/creator event) " could come up with something more interesting."])
    (fn [event]
      (when (-> event :event/tx :tx/fn-id (= :inc-counter))
        (let [event+tx [(hga-inspector/accent event) (:event/tx event)]]
@@ -406,19 +416,22 @@
           ::y        (->y event)
           ::args     [event+tx]})))
 
-   (rum/defc tutor-share-stake-tx-view < rum/reactive [[event {[{:share-stake/keys [from to ratio]}] :tx/args :as tx} :as event+tx]]
+   (rum/defc tutor-share-stake-tx-view < rum/reactive
+     [[event {[{:share-stake/keys [from to ratio]}] :tx/args :as tx} :as event+tx]]
      (let [pron   (if (= :male (-> from hg-members/member-name->person :member/gender))
                     "him"
                     "her")
            amount (if (= (first ratio) (second ratio))
                     "all"
                     (str (first ratio) "/" (second ratio)))]
-       [:div.tutor
+       [:div.tutor.unbound
         (i event+tx "This event's transaction") ", issued by " (hg/creator event) ",\n"
         "transfers " amount " of holded by " pron " stake to " to ".\n"
-        "Whoa! That's interesting, stake's dynamic! " to " will be invited to participate in this permissioned system.\n\n"
+        "Whoa! That's interesting, stake's dynamic! \n"
+        to " will be invited to participate in this permissioned system.\n\n"
 
-        "(stake holders can transfer only their own stake, in case you wonder, if so try to do others - their txes are considered invalid)"]))
+        "(stake holders can transfer only their own stake, in case you wonder,\n"
+        " if so try to do others - their txes are considered invalid)"]))
    (fn [event]
      (when (-> event :event/tx :tx/fn-id (= :share-stake))
        (let [event+tx [(hga-inspector/accent event) (:event/tx event)] ]
@@ -462,7 +475,7 @@
             ::y        (->y last-cr-w)
             ::args     [cr e+tx+re stake-map-old stake-map-new]}))))
 
-   (rum/defc tutor-paper-view []
+   (rum/defc tutor-all-there-is-view []
      [:div.tutor
       "You've seen all there's to it, huh!\n\n Yes, Hashgraph is _that_ darn simple, yet the power it gives is immense - an exemplar of tech beauty.\n\n I hope this viz made the simple thing easy. If not, well.. " [:a {:href hga-view/discussions-link :target "_blank"} "reach out"] " with a spare tomato. (:"])
    (fn [event]

@@ -203,6 +203,21 @@ atop a
 HASHGRAPH
 of gossip.
 It's all there's to it, see for yourself ->
+* FIXES
+** DONE "This event's transaction, issued by BLANK"
+** DONE tutors get cut height-wise
+** TODO not inspected on click on "seen Charlie's event"
+** TODO >| does not scroll to next
+** TODO >>| does nothing
+** TODO |<< transitions are slowpoke
+** TODO arrow on home may not be an intuitive action to scroll
+** TODO Ctrl+hover may not be intuitive
+** TODO may not be intuitive to hover over text
+** TODO stake change _from_ _to_ may not be intuitive
+* More
+** TODO introduce members
+** TODO perhaps show db
+** TODO perhaps make it more insteresting than increment a counter
 
 * objectives
 ** understand the algo to see how it can be applied in NG
