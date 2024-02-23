@@ -422,7 +422,7 @@
               (map ->event-info))
          (->> played>
               (map ->event-info))
-         (->> (reverse rewinded<)
+         (->> (reverse (take 10 rewinded<))
               (map ->event-info))]))))
 
 
