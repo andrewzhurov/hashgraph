@@ -450,7 +450,7 @@
 
 (rum/defc controls-view < rum/reactive []
   [:div#controls
-   (menu-controls)
+   #_(menu-controls)
    (hga-playback/playback-controls-view)])
 
 (rum/defc viz-section-view
