@@ -397,8 +397,9 @@
 
                                           witness?            (hg/witness? event r-cr)
                                           will-receive-votes? (and witness? r-final?)
-                                          receives-votes?     (and will-receive-votes? ?concluding-main-tip (hg/ancestor? ?concluding-main-tip event)
-                                                                   (hg/voting-round? ?concluding-main-tip event r-cr))
+                                          receives-votes?     (and will-receive-votes? ?concluding-main-tip
+                                                                   (hg/voting-round? ?concluding-main-tip event r-cr)
+                                                                   (hg/ancestor? ?concluding-main-tip event))
                                           ?cr                 (when receives-votes?
                                                                 (cr+r->?cr ?last-concluded-round r))
                                           ?votes            (when receives-votes?
