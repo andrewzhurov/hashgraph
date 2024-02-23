@@ -47,23 +47,13 @@
                           :played<   '()   ;; on play we'll read from the first when putting to behind ^
                           :rewinded< '() ;; on play we'll read from the first when putting to played ^
                           }))
-#_(utils/log! :playback @*playback)
 
 (defonce *played<   (rum/cursor *playback :played<))
 (defonce *rewinded> (rum/cursor *playback :rewinded>))
 
-
-(def *frame (atom 0))
-(def *tracking? (atom false))
-(defn track-frame! []
-  (swap! *frame inc)
-  (js/requestAnimationFrame track-frame!))
-(when-not @*tracking?
-  (reset! *tracking? true)
-  (track-frame!))
-
 ;; As events viz is scrolled forward, more events get "created".
 ;; As events viz is scrolled backwards, time's rewinded.
+
 
 (def sync-playback-with-viz-scroll
   (add-watch hga-state/*viz-scroll ::sync-playback-with-scroll
@@ -72,45 +62,41 @@
                      play-forward?                       (pos? delta)
                      {:keys [behind> played< rewinded<]} @*playback]
                  (if play-forward?
-                   (do
-                     #_(js/console.log "play")
-                     ;; TODO switch to split-with*
-                     (let [[to-behind< new-played<]          (->> played< (split-with #(hga-view/->before-viz-viewbox? (hga-view/evt->y %) new-viz-scroll)))
-                           new-behind>                       (into behind> to-behind<) ;; TODO perhaps try storing in separate atom
-                           [to-play-rewinded< new-rewinded<] (->> rewinded< (split-with #(not (hga-view/->after-viz-playback-viewbox? (hga-view/evt->y %) new-viz-scroll))))
-                           new-just-played<                  to-play-rewinded<
-                           new-played<                       (concat new-played< to-play-rewinded<)]
-                       (if (not (empty? new-rewinded<))
-                         (do (reset! hga-state/*just-played< new-just-played<)
-                             (reset! *playback
-                                     {:behind>   new-behind>
-                                      :played<   new-played<
-                                      :rewinded< new-rewinded<}))
-                         (let [left<                     @*left<
-                               [to-play-left< new-left<] (->> left< (split-with #(not (hga-view/->after-viz-playback-viewbox? (hga-view/evt->y %) new-viz-scroll))))
-                               new-played<               (concat new-played< to-play-left<)
-                               new-just-played<          (concat new-just-played< to-play-left<)]
-                           (reset! hga-state/*just-played< new-just-played<) ;; fire first, so transitions are ready, brittle :/
+                   ;; TODO switch to split-with*
+                   (let [[to-behind< new-played<]          (->> played< (split-with #(hga-view/->before-viz-viewbox? (hga-view/evt->y %) new-viz-scroll)))
+                         new-behind>                       (into behind> to-behind<) ;; TODO perhaps try storing in separate atom
+                         [to-play-rewinded< new-rewinded<] (->> rewinded< (split-with #(not (hga-view/->after-viz-playback-viewbox? (hga-view/evt->y %) new-viz-scroll))))
+                         new-just-played<                  to-play-rewinded<
+                         new-played<                       (concat new-played< to-play-rewinded<)]
+                     (if (not (empty? new-rewinded<))
+                       (do (reset! hga-state/*just-played< new-just-played<)
                            (reset! *playback
                                    {:behind>   new-behind>
                                     :played<   new-played<
-                                    :rewinded< '()})
-                           (reset! *left< new-left<)))))
-
-                   (do #_(js/console.log "rewind")
-                       (let [played>                  (reverse played<)
-                             [to-play> new-behind>]   (->> behind>     (split-with #(not (hga-view/->before-viz-viewbox? (hga-view/evt->y %) new-viz-scroll))))
-                             new-played>              (concat played> to-play>)
-                             [to-rewind> new-played>] (->> new-played> (split-with #(hga-view/->after-viz-playback-viewbox? (hga-view/evt->y %) new-viz-scroll)))
-                             new-just-rewinded>       to-rewind>
-                             new-rewinded<            (into rewinded< to-rewind>)
-                             new-played<              (reverse new-played>)
-                             ]
-                         (reset! hga-state/*just-rewinded> new-just-rewinded>)
+                                    :rewinded< new-rewinded<}))
+                       (let [left<                     @*left<
+                             [to-play-left< new-left<] (->> left< (split-with #(not (hga-view/->after-viz-playback-viewbox? (hga-view/evt->y %) new-viz-scroll))))
+                             new-played<               (concat new-played< to-play-left<)
+                             new-just-played<          (concat new-just-played< to-play-left<)]
+                         (reset! hga-state/*just-played< new-just-played<) ;; fire first, so transitions are ready, brittle :/
                          (reset! *playback
                                  {:behind>   new-behind>
                                   :played<   new-played<
-                                  :rewinded< new-rewinded<}))))))))
+                                  :rewinded< '()})
+                         (reset! *left< new-left<))))
+
+                   (let [played>                  (reverse played<)
+                         [to-play> new-behind>]   (->> behind>     (split-with #(not (hga-view/->before-viz-viewbox? (hga-view/evt->y %) new-viz-scroll))))
+                         new-played>              (concat played> to-play>)
+                         [to-rewind> new-played>] (->> new-played> (split-with #(hga-view/->after-viz-playback-viewbox? (hga-view/evt->y %) new-viz-scroll)))
+                         new-just-rewinded>       to-rewind>
+                         new-rewinded<            (into rewinded< to-rewind>)
+                         new-played<              (reverse new-played>)]
+                     (reset! hga-state/*just-rewinded> new-just-rewinded>)
+                     (reset! *playback
+                             {:behind>   new-behind>
+                              :played<   new-played<
+                              :rewinded< new-rewinded<})))))))
 
 
 (defn ->playback-events< [{:keys [behind> played< rewinded<]}]
@@ -184,29 +170,6 @@
   (let [reader (transit/reader :json)]
     (transit/read reader packed)))
 
-
-#_
-(let [all-events< (->all-events<!)]
-  (log! :before all-events<)
-  (-> all-events<
-      pack
-      (->> (log! :packed))
-      unpack
-      (->> (log! :unpacked))
-      (= all-events<))
-  )
-
-#_
-(let [playback-events< (->playback-events< @*playback)]
-  (log! :before playback-events<)
-  (-> playback-events<
-      pack
-      (->> (log! :packed))
-      unpack
-      (->> (log! :unpacked))
-      (= playback-events<))
-     )
-
 (defn save-playback! []
   (-> (js/window.showSaveFilePicker (clj->js {"suggestedName" (let [date    (new js/Date)
                                                                     year    (.getFullYear date)
@@ -276,12 +239,6 @@
                       (last (:played< @*playback)))]
     (when last-evt?
       (viz-scroll-to-event! last-evt?))))
-
-#_
-(defn play! []
-  (js/requestAnimationFrame
-   (fn []
-     (js/setTimeout (fn [] (play-once!) (play!))))))
 
 (def playback-controls
   [#_#_{:description "Load hashgraph playback from disk"
@@ -357,7 +314,7 @@
   []
   [:<>
    [:style (css playback-controls-styles)]
-   [:div.playback-controls {:class [#_(when (rum/react hga-state/*playback-playing?))]}
+   [:div.playback-controls
     (for [{:keys [*state on-state] :as playback-control} playback-controls]
       (let [{:keys [id icon description short action]} (if-not *state
                                                          playback-control
