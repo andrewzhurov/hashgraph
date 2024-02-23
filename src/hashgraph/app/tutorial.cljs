@@ -476,7 +476,8 @@
       "- an exemplar of tech beauty.\n\n"
 
       "I hope this viz made the simple thing easy.\n"
-      "If not, well.. " [:a {:href hga-view/discussions-link :target "_blank"} "reach out"] " with a spare tomato. (:"])
+      "Love it? Hate it? " [:a {:href hga-view/discussions-link :target "_blank"} "Let me know!"] "\n\n"
+      #_#_#_"If not, well.. " [:a {:href hga-view/discussions-link :target "_blank"} "reach out"] " with a spare tomato. (:"])
    (fn [event]
      (when (= 1 (count @*left-view->state-fn))
        (let [last-on-event-creation-time (->> @*tutors-ordered last ::on-event hg/creation-time)]
