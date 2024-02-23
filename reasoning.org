@@ -185,7 +185,7 @@ Ok for now. No good solutions found.
 * TODO make algorithm understandable
 ** TODO capture in data the reason round increases
 ** TODO capture in data the reason of becoming a witness
-* TODO what goes on the home section?
+* DONE what goes on the home section?
 ** option1
 *** problem definition - conflicting transactions
 **** solution - total order, async byzantine

@@ -1,6 +1,7 @@
 (ns hashgraph.app.tutorial
   (:require-macros [hashgraph.app.tutorial :refer [i]])
-  (:require [clojure.set :as set]
+  (:require [goog.object]
+            [clojure.set :as set]
             [clojure.string :as str]
             [rum.core :as rum]
             [garden.core :refer [css]]
@@ -15,7 +16,7 @@
             [hashgraph.app.playback :as hga-playback]
             [hashgraph.app.view :refer [t] :as hga-view]
             [hashgraph.app.utils :as hga-utils]
-            [hashgraph.utils.core :refer [hash=] :refer-macros [l]]))
+            [hashgraph.utils.core :refer [hash=] :refer-macros [l] :as utils]))
 
 (defn ->events [& from-member-to-member<]
   (->> from-member-to-member<
@@ -163,8 +164,6 @@
         ::args     [event]}))
 
    (rum/defc tutor-round-view < rum/reactive
-     {:will-mount  (fn [state] (reset! hga-state/*show-rounds? (-> state :rum/args last)) state)
-      :will-update (fn [state] (reset! hga-state/*show-rounds? (-> state :rum/args last)) state)}
      [event round]
      [:div.tutor
       "In order for an " (i event "event") " to be received, it's order must be concluded.\n"
@@ -173,13 +172,13 @@
    (fn [event]
      (when (= 3 (hg/index event))
        (let [round (hg/->round event (hg/->concluded-round event))]
-         {::on-event event
-          ::y        (->y event)
-          ::args     [event round]})))
+         {::on-event  event
+          ::on-play   #(reset! hga-state/*show-rounds? true)
+          ::on-rewind #(reset! hga-state/*show-rounds? false)
+          ::y         (->y event)
+          ::args      [event round]})))
 
    (rum/defc tutor-witness-view < rum/reactive
-     {:will-mount  (fn [state] (reset! hga-state/*show-witnesses? (-> state :rum/args last)) state)
-      :will-update (fn [state] (reset! hga-state/*show-witnesses? (-> state :rum/args last)) state)}
      [r1-ws]
      [:div.tutor
       "First event of each member in a round is considered to be a witness.\n"
@@ -191,9 +190,11 @@
              r1-ws     (hg/round-witnesses event 1 cr)
              latest-rw (->> r1-ws (sort-by :event/creation-time >) first)]
          (when (= 3 (count r1-ws))
-           {::on-event latest-rw
-            ::y        (->y latest-rw)
-            ::args     [r1-ws]}))))
+           {::on-event  latest-rw
+            ::on-play   #(reset! hga-state/*show-witnesses? true)
+            ::on-rewind #(reset! hga-state/*show-witnesses? false)
+            ::y         (->y latest-rw)
+            ::args      [r1-ws]}))))
 
    (rum/defc tutor-strongly-seeing-view < rum/reactive
      [event m1-path m2-path]
@@ -244,8 +245,6 @@
                       ::args     [event round strongly-see-r-paths]}))))
 
    (rum/defc tutor-stake-map-view < rum/reactive
-     {:will-mount  (fn [state] (reset! hga-state/*show-stake-map? (-> state :rum/args last)) state)
-      :will-update (fn [state] (reset! hga-state/*show-stake-map? (-> state :rum/args last)) state)}
      [rw stake-map]
      [:div.tutor
       (i rw "Round witnesses") " will receive virtual votes regarding their fame from next round witnesses, with vote's weight according to " (i stake-map "member's holded stake") "."])
@@ -254,9 +253,11 @@
        (let [cr        (hg/->concluded-round event)
              r1-rws    (hg/round-witnesses event 1 cr)
              stake-map (-> cr hg/concluded-round->stake-map)]
-         {::on-event event
-          ::y        (->y event)
-          ::args     [r1-rws stake-map]})))
+         {::on-event  event
+          ::on-play   #(reset! hga-state/*show-stake-map? true)
+          ::on-rewind #(reset! hga-state/*show-stake-map? false)
+          ::y         (->y event)
+          ::args      [r1-rws stake-map]})))
 
    (rum/defc tutor-witnesses-will-vote-view < rum/reactive
      [r2-ws r1-ws]
@@ -488,10 +489,15 @@
    })
 
 
-(defonce *tutors (atom []))
-(defonce *tutors-ordered (rum/derived-atom [*tutors] ::*derive-ordered-tutors
-                           (fn [tutors]
-                             (sort-by ::y tutors))))
+(def *tutors (atom []))
+(def *tutors-ordered (rum/derived-atom [*tutors] ::derive-ordered-tutors
+                       (fn [tutors]
+                         (sort-by ::y tutors))))
+
+(def *on-event->tutor (rum/derived-atom [*tutors] ::derive-on-event->tutor
+                              (fn [tutors]
+                                (->> tutors (into (hash-map) (map (fn [tutor] [(::on-event tutor) tutor])))))))
+
 (defonce *left-view->state-fn
   (rum/derived-atom [*tutors] ::*derive-left-tutors
     (fn [tutors]
@@ -537,28 +543,29 @@
            (fn [_ _ _ just-played<]
              (when-let [hidden-events (not-empty @*hidden-events)]
                (when-let [to-show-events (not-empty (set/intersection hidden-events (set just-played<)))]
+
+                 ;; trigger on-play
+                 (let [on-event->tutor @*on-event->tutor]
+                   (doseq [to-show-event to-show-events]
+                     (when-let [to-show-tutor (get on-event->tutor to-show-event)]
+                       (when-let [on-play (::on-play to-show-tutor)]
+                         (on-play)))))
+
                  (swap! *seen-events set/union to-show-events)))))
 
 (add-watch hga-state/*just-rewinded> ::sync-tutors-with-just-played
            (fn [_ _ _ just-rewinded>]
              (when-let [seen-events (not-empty @*seen-events)]
                (when-let [to-hide-events (not-empty (set/intersection seen-events (set just-rewinded>)))]
+
+                 ;; trigger on-rewind
+                 (let [on-event->tutor @*on-event->tutor]
+                   (doseq [to-hide-event to-hide-events]
+                     (when-let [to-hide-tutor (get on-event->tutor to-hide-event)]
+                       (when-let [on-rewind (::on-rewind to-hide-tutor)]
+                         (on-rewind)))))
+
                  (swap! *seen-events set/difference to-hide-events)))))
-
-(defn ->spaced-tutors [tutors]
-  (let [*prev-y (volatile! nil)]
-    (->> tutors
-         (sort-by ::y)
-         (reduce (fn [spaced-tutors-acc tutor]
-                   (let [current-y (max (::y tutor)
-                                        (some-> @*prev-y
-                                                (+ hga-view/tutorial-size hga-view/tutorial-margin)))]
-                     (vreset! *prev-y current-y)
-                     (conj spaced-tutors-acc (assoc tutor ::y current-y))))
-                 []))))
-
-#_
-(defonce *spaced-tutors (rum/derived-atom [*tutors] ::derive-spaced-tutors ->spaced-tutors))
 
 (defonce *seen-latest-event
   (rum/derived-atom [*seen-events] ::derive-only-one-seen-event
