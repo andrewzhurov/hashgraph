@@ -353,6 +353,7 @@
   [[:trace/fn-name :trace/fn-args :trace/result :trace/time :trace/traces]
    [:fn-profile/fn-name :fn-profile/min-time :fn-profile/max-time :fn-profile/medium-time :fn-profile/max-time :fn-profile/total-time :fn-profile/max-time-traces :fn-profile/traces]
    [:event/creator :event/creation-time :event/other-parent :event/self-parent :event/tx]
+   [:round/number :round/next? :round/final? :round/event :round/wc->sbcs :round/cr]
    [:vote/type :vote/value :vote/stake :vote/voter :vote/votee :vote/atop-cr]
    [:concluded-round/r :concluded-round/witness-concluded :concluded-round/ws :concluded-round/ufws :concluded-round/votes :concluded-round/etr->les :concluded-round/es-nr :concluded-round/es-r :concluded-round/last-received-event :concluded-round/stake-map :concluded-round/prev-concluded-round]])
 
