@@ -2,7 +2,8 @@
   (:require [rum.core :as rum]
             [garden.core :as gc]
             [garden.selectors :as gs]
-            [hashgraph.app.icons :as hga-icons]))
+            [hashgraph.app.icons :as hga-icons]
+            [hashgraph.app.view :as hga-view]))
 
 (def desc-size "14px")
 (def delim-size "18px")
@@ -82,17 +83,17 @@
     [:div.def.distributed-ledger
      [:div.with-meta
       [:div.meta.top "Making a"]
-      [:div.sym "Distributed Ledger"]
+      [:div.sym [:a {:href hga-view/dlt-link :target "_blank"} "Distributed Ledger"]]
       [:div.meta "having total order of transactions"]]
      [:div.next "powered by"]]
     [:div.def.virtual-voting
      [:div.with-meta
-      [:div.sym "Virtual Voting"]
+      [:div.sym [:a {:href hga-view/virtual-voting-link :target "_blank"} "Virtual Voting"]]
       [:div.meta "asynchronous byzantine fault-tolerant"]]
      [:div.next "atop"]]
     [:div.def.hashgraph
      [:div.with-meta
-      [:div.sym "Hashgraph"]
+      [:div.sym [:a {:href hga-view/paper-link :target "_blank"} "Hashgraph"]]
       [:div.meta "of gossip"]]]
 
     [:div.see-for-yourself "Scary? Oh, sure! See for yourself " (hga-icons/icon :solid :right-long :size :2x :color :lightgray)]

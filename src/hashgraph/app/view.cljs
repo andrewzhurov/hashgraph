@@ -4,8 +4,12 @@
             [hashgraph.members :as hg-members]
             [hashgraph.utils.core :refer [log!] :refer-macros [l letl] :as utils]))
 
+(def dlt-link "https://hedera.com/learning/distributed-ledger-technologies/what-are-distributed-ledger-technologies-dlts")
+(def virtual-voting-link "https://docs.hedera.com/hedera/core-concepts/hashgraph-consensus-algorithms/virtual-voting")
+(def paper-link "https://www.swirlds.com/downloads/SWIRLDS-TR-2016-01.pdf")
 (def issue-link "https://github.com/andrewzhurov/hashgraph/issues")
 (def discussions-link "https://github.com/andrewzhurov/hashgraph/discussions")
+
 (def view-mode-horizontal? true)
 (def border-radius 6)
 (def tutorial-size 300)
