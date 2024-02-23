@@ -1,4 +1,5 @@
 (ns hashgraph.utils.core
+  #?(:cljs (:require-macros [hashgraph.utils.core :refer [l]]))
   (:require [clojure.test :refer [deftest testing is are]]
             [clojure.walk]
             [taoensso.tufte :as tufte]
