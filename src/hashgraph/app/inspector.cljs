@@ -979,14 +979,14 @@
      [:div.max-time-trace "Max time trace"
       (inspector *max-time-trace opts)]
 
-     (when-let [active-inspectables (not-empty (rum/react *active-inspectables))]
-       [:div "Active inspectables"
-        (inspector active-inspectables (assoc opts :plain? true :expanded-depth 3))])
-
      (when-let [inspected (not-empty (rum/react *inspected))]
        [:div "Inspected"
         (inspector inspected (assoc opts :plain? true))])
 
      (when-let [peeked (not-empty (rum/react *peeked))]
        [:div "Peeked"
-        (inspector peeked (assoc opts :plain? true :expanded-depth 1))])]))
+        (inspector peeked (assoc opts :plain? true :expanded-depth 1))])
+
+     (when-let [active-inspectables (not-empty (rum/react *active-inspectables))]
+       [:div "Active inspectables"
+        (inspector active-inspectables (assoc opts :plain? true :expanded-depth 3))])]))
