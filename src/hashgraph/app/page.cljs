@@ -136,7 +136,11 @@
                    :filter "drop-shadow(0px 0px 2px rgb(0 0 0 / 0.4))"}
       [:.inspectable.accented {:scale  1
                                :filter :none}]]
-     [(gs/& :.analysis (gs/not :.inspected) (gs/not :.nested)) {:opacity 0.33}]]]
+     [(gs/& :.analysis (gs/not :.inspected) (gs/not :.nested)) {:opacity 0.33}]]
+    [:.refs
+     [:.inspectable
+      [:&.accented {:scale 1
+                    :filter "drop-shadow(0px 0px 1px rgb(0 0 0 / 0.2))"}]]]]
 
    [:.event-info {;; :filter "drop-shadow(0px 0px 2px rgb(0 0 0 / 0.4))"
                   }
@@ -294,11 +298,13 @@
     (when (not (zero? opacity))
       [:g {:opacity opacity}
 
-       (let [ref-opacity (- 1 fill-opacity)]
+       (let [ref-opacity (- 1 fill-opacity)
+             ->accented?  (fn [_accented ips els] (->> ips (some (fn [ip] (and (map? ip) (some-> (:sees/path ip) (utils/->neighbours? els)))))))
+             ->inspected? (fn [ips els]           (->> ips (some (fn [ip] (and (map? ip) (some-> (:sees/path ip) (utils/->neighbours? els)))))))]
          (when-not (zero? ref-opacity)
            [:g.refs
             (when sp-view-state
-              [:g.ref.sp (inspectable [event (hg/self-parent event)] {:passive? true :accentable? false})
+              [:g.ref.sp (inspectable [event (hg/self-parent event)] {:passive? true :->inspected? ->inspected? :->accented? ->accented?})
                [:line {hga-view/x1   x
                        hga-view/y1   y
                        hga-view/x2   (js-map/get sp-view-state :x)
@@ -308,7 +314,7 @@
                        :style        {:opacity ref-opacity}}]])
 
             (when op-view-state
-              [:g.ref.op (inspectable [event (hg/other-parent event)] {:passive? true :accentable? false})
+              [:g.ref.op (inspectable [event (hg/other-parent event)] {:passive? true :->inspected? ->inspected? :->accented? ->accented?})
                [:line {hga-view/x1   x
                        hga-view/y1   y
                        hga-view/x2   (js-map/get op-view-state :x)
@@ -333,8 +339,8 @@
           [:g (inspectable (cond-> [event]
                              received-event (conj received-event)
                              tx             (conj tx))
-                           {:->inspected?   (fn [ips els]      (->> els (some (fn [el] (hga-inspector/->in ips el)))))
-                            :->accented?    (fn [accented els] (->> els (some (fn [el] (hga-inspector/->in accented el)))))})
+                           {:->inspected?   (fn [ips els]           (->> els (some (fn [el] (hga-inspector/->in ips el)))))
+                            :->accented?    (fn [accented _ips els] (->> els (some (fn [el] (hga-inspector/->in accented el)))))})
            [:circle.event {:class        (when received-event "received")
                            :r            hga-view/evt-r
                            :stroke       color
