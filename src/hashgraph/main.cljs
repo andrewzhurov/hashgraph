@@ -167,7 +167,7 @@
   ([event cr r]
    (let [evt-r (->round-number event cr)]
      (if (< evt-r r)
-       (list)
+       []
        (let [prev (concat (some-> event self-parent (->see-r-paths cr r))
                           (some-> event other-parent (->see-r-paths cr r)))]
          (-> prev
@@ -187,7 +187,14 @@
                                      (map stake-map)
                                      (reduce +))
                                 (> many-stake))))
-         (map-indexed (fn [idx s-path] (with-meta s-path {:strongly-seen-path-idx idx}))))))
+         (sort-by count <)
+         (group-by (comp creator first))
+         vals
+         (map first)
+         (map (fn [s-path] {:sees/seer      event
+                            :sees/seee      (first s-path)
+                            :sees/path      s-path
+                            :sees/strongly? true})))))
 
 #_
 (def ->seen-by
