@@ -97,22 +97,13 @@
 (def styles-css (css styles))
 
 (defn tutor [& text-with-is]
-  (into [:div.tutor text-with-is])
-  #_(reduce (fn [out-acc text-or-i]
-            (if (string? text-or-i)
-              (let [[first-text-part & rest-text-parts :as all-text-parts] (str/split text-or-i #" ")]
-                (if (some-> out-acc last meta ::i) ;; conj text part onto the previous i
-                  (-> (conj (vec (butlast out-acc)) (conj (last out-acc) first-text-part))
-                      (into (map (fn [text-part] [:span.text-part text-part]) rest-text-parts)))
-                  (into out-acc (map (fn [text-part] [:span.text-part text-part]) all-text-parts))))
-              (conj out-acc ^::i [:span.text-part text-or-i])))
-          [:div.tutor] text-with-is))
+  (into [:div.tutor text-with-is]))
 
 (def ->y hga-view/evt->y)
 
 (declare *left-view->state-fn)
 (declare *tutors-ordered)
-(macroexpand '(i 1 {} [:div.ref]))
+
 (def view->state-fn
   {
    (rum/defc tutor-event-view < rum/reactive
