@@ -194,6 +194,7 @@
 
 
 (rum/defcs event-witness-view <
+  {:key-fn (fn [_] "witness")}
   hga-utils/static-by-hashes
   rum/reactive
   (rum/local nil ::*paths)
@@ -201,7 +202,8 @@
   (let [witness-shown? (and witness? (rum/react hga-state/*show-witnesses?))]
     [:g.witness-view-wrapper (when (and witness-shown? #_@*paths)
                                (inspectable :witness #_@*paths {:passive? true}))
-     [:circle.witness-view {:class [(if witness-shown? "present" "absent")
+     [:circle.witness-view {:key "witness-view"
+                            :class [(if witness-shown? "present" "absent")
                                     (when (and witness? final?) "final")]}]
      (when witness-shown?
        ;; even though calc is optimized, highlight of affected ones is darn slow
