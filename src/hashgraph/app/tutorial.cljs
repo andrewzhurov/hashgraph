@@ -408,8 +408,8 @@
 
       (i event+tx "This event's transaction") ", issued by " (hg/creator event) ",\n"
       "increments a counter by 1.\n"
-      "Not much of a transaction, I know.. \n"
-      (hg/creator event) " could come up with something more interesting."])
+      "Not much of a transaction, I know.. " (hg/creator event) "\n"
+      " could come up with something more interesting."])
    (fn [event]
      (when (-> event :event/tx :tx/fn-id (= :inc-counter))
        (let [event+tx [(hga-inspector/accent event) (:event/tx event)]]
@@ -477,8 +477,15 @@
             ::args     [cr e+tx+re stake-map-old stake-map-new]}))))
 
    (rum/defc tutor-all-there-is-view []
-     [:div.tutor
-      "You've seen all there's to it, huh!\n\n Yes, Hashgraph is _that_ darn simple, yet the power it gives is immense - an exemplar of tech beauty.\n\n I hope this viz made the simple thing easy. If not, well.. " [:a {:href hga-view/discussions-link :target "_blank"} "reach out"] " with a spare tomato. (:"])
+     [:div.tutor.unbound
+      "You've seen all there's to it, huh!\n\n"
+
+      "Yes, Hashgraph is _that_ darn simple,\n"
+      "yet the power it gives is immense\n"
+      "- an exemplar of tech beauty.\n\n"
+
+      "I hope this viz made the simple thing easy.\n"
+      "If not, well.. " [:a {:href hga-view/discussions-link :target "_blank"} "reach out"] " with a spare tomato. (:"])
    (fn [event]
      (when (= 1 (count @*left-view->state-fn))
        (let [last-on-event-creation-time (->> @*tutors-ordered last ::on-event hg/creation-time)]
