@@ -18,7 +18,7 @@
 
    [hashgraph.app.state :as hga-state]
    [hashgraph.app.events :as hga-events]
-   [hashgraph.app.view :refer [t] :refer-macros [style-kind->css] :as hga-view]
+   [hashgraph.app.view :refer [t] :as hga-view]
    [hashgraph.app.styles :refer [reg-styles! kind->css]]
    [hashgraph.app.members :as hga-members]
    [hashgraph.app.playback :as hga-playback]
