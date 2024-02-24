@@ -20,6 +20,7 @@
             :grid-template-rows    "1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr"
             :gap                   "0px 0px"
             :grid-auto-flow        :row
+            :position              :relative
             }
     [:.distributed-ledger {:grid-area "distributed-ledger"}]
     [:.virtual-voting {:grid-area "virtual-voting"}]
