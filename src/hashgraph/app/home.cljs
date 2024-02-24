@@ -96,5 +96,4 @@
       [:div.sym [:a {:href hga-view/paper-link :target "_blank"} "Hashgraph"]]
       [:div.meta "of gossip"]]]
 
-    [:div.see-for-yourself "Scary? Oh, sure! See for yourself " (hga-icons/icon :solid :right-long :size :2x :color :lightgray)]
-    [:div.paper ""]]])
+    [:div.see-for-yourself "Scary? Oh, sure! See for yourself " (hga-icons/icon :solid :right-long :size :2x :color :lightgray)]]])
