@@ -114,7 +114,7 @@
 ;; we need to make sure that events have distinct creation times (as int, because scroll position is an int).
 ;; To achieve that we can track taken creation times, and ensure that newly issued creation time is distinct.
 (defonce *taken-creation-times (atom #{}))
-(defonce slowdown-period-ms 3000)
+(defonce slowdown-period-ms (if hga-view/view-mode-horizontal? 2200 1000))
 (defonce *in-slowdown? (atom true))
 (defn ->next-creation-time [prev-creation-time]
   (let [next-creation-time-candidate
