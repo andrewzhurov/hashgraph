@@ -84,7 +84,7 @@
                              :box-sizing       :border-box
                              :background-color :lavender
                              :transition       (t :opacity (/ tt 1.5) "ease-in" (/ tt 5))
-                             :z-index          0})
+                             :z-index          hga-view/tutorial-z})
      [:.tutor {:white-space :pre-line}
       [(gs/& (gs/not :.unbound)) {:max-width (px hga-view/tutorial-size)}]
       [:.inspectable {:color     :maroon

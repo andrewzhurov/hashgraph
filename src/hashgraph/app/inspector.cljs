@@ -939,7 +939,7 @@
      :bottom         "0px"
      :overflow-y     :auto
      :overflow-x     :auto
-     :z-index        -1}
+     :z-index        hga-view/debug-inspector-z}
     [:>.inspector {:background "rgba(255,255,255, 0.9)"
                    :z-index         100000}]
     [:button.clean {:width           "18px"
