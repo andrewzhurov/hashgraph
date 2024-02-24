@@ -8,6 +8,7 @@
             [hashgraph.main :as hg]
             [hashgraph.members :as hg-members]
             [hashgraph.app.view :as hga-view]
+            [hashgraph.app.styles :refer [reg-styles!]]
             [hashgraph.app.icons :as hga-icons]
             [hashgraph.app.state :as hga-state]
             [hashgraph.app.events :as hga-events]
@@ -301,6 +302,8 @@
       :align-items     :center
       :cursor          :pointer}]]])
 
+(reg-styles! ::playback-controls playback-controls-styles)
+
 
 (rum/defc playback-controls-view < rum/reactive
   {:will-mount   (fn [state]
@@ -312,16 +315,14 @@
                      (hga-keyboard/unreg-shortcut! shortcut))
                    state)}
   []
-  [:<>
-   [:style (css playback-controls-styles)]
-   [:div.playback-controls
-    (for [{:keys [*state on-state] :as playback-control} playback-controls]
-      (let [{:keys [id icon description short action]} (if-not *state
-                                                         playback-control
-                                                         (merge playback-control
-                                                                (get on-state (rum/react *state))))]
-        [:div.playback-control {:class    [(name id)]
-                                :key      id
-                                :title    description
-                                :on-click action}
-         (or icon short)]))]])
+  [:div.playback-controls
+   (for [{:keys [*state on-state] :as playback-control} playback-controls]
+     (let [{:keys [id icon description short action]} (if-not *state
+                                                        playback-control
+                                                        (merge playback-control
+                                                               (get on-state (rum/react *state))))]
+       [:div.playback-control {:class    [(name id)]
+                               :key      id
+                               :title    description
+                               :on-click action}
+        (or icon short)]))])

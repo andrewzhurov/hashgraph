@@ -218,6 +218,9 @@ It's all there's to it, see for yourself ->
 ** TODO introduce members
 ** TODO perhaps show db
 ** TODO perhaps make it more insteresting than increment a counter
+** DONE mobile-friendly
+Made somewhat mobile-friendly.
+** TODO maybe add link to github repo
 
 * objectives
 ** understand the algo to see how it can be applied in NG

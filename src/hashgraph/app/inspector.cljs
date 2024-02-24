@@ -8,6 +8,7 @@
    [garden.stylesheet :refer [at-keyframes]]
    [hashgraph.app.icons :as hga-icons]
    [hashgraph.app.view :refer [t] :as hga-view]
+   [hashgraph.app.styles :refer [reg-styles!]]
    [hashgraph.app.keyboard :refer [kb-key? kb-keys?] :as hga-keyboard]
    [hashgraph.app.transitions :refer [tt] :as hga-transitions]
    [hashgraph.utils.core
@@ -131,7 +132,7 @@
     [:&.accented
      {:background-color "rgba(0,0,0,0.1)"}]]])
 
-(def inspector-styles-css (css inspector-styles))
+(reg-styles! ::inspector inspector-styles)
 
 (def *compact-names? (atom false))
 
@@ -273,7 +274,7 @@
                                  ->inspected? (fn [ips el] (->in ips el))
                                  ->accented?  ->accented?*
                                  ;; path     []
-                                 }}]]
+                                 } :as opts}]]
   (when in-view?
     (let [analysis? (->analysis?)]
       (cond-> {:class (cond-> ["inspectable"
@@ -294,9 +295,11 @@
                                   (inactive-inspectable! path el)
                                   (reset-active-inspectables!))
                :on-click       #(when-not nested?
-                                  (.preventDefault %)
-                                  (when-not nested? (.stopPropagation %))
-                                  (toggle-inspect! el)))))))
+                                  (when (or (not (:debug? opts))
+                                            (and (:debug? opts) (kb-key? peek-key)))
+                                    (.preventDefault %)
+                                    (when-not nested? (.stopPropagation %))
+                                    (toggle-inspect! el))))))))
 
 #_#_
 (def inspectable-opts-defaults
@@ -896,13 +899,11 @@
                   :margin  "0px"
                   :border  :none}]]]]]]])
 
-(def bins-styles-css (css bins-styles))
+(reg-styles! ::bins bins-styles)
 
 (rum/defc bins-view < rum/static rum/reactive
   []
   [:div.bins-view
-   [:style bins-styles-css]
-   [:style inspector-styles-css]
    [:div.bins
     (let [inspected-with-peeked (rum/react *inspected-with-peeked)]
       (when (not-empty inspected-with-peeked)
@@ -951,7 +952,8 @@
                     :align-items     :center
                     :margin-left     "5px"}]]])
 
-(def debug-inspector-styles-css (css debug-inspector-styles))
+(reg-styles! ::debug debug-inspector-styles)
+
 
 (rum/defcs debug-view < rum/static rum/reactive (rum/local 0 ::*open-depth)
   {:did-mount (fn [state]
@@ -959,11 +961,11 @@
                   (set-inspector-wrapper-view-bounds! dom-node)
                   (assoc state ::on-scroll-end #(set-inspector-wrapper-view-bounds! dom-node))))}
   [{::keys [*open-depth on-scroll-end] :as state}]
-  (let [opts {:expanded-depth @*open-depth :path []}]
+  (let [opts {:expanded-depth @*open-depth
+              :path []
+              :debug? true}]
     [:div.debug-inspector {:on-scroll (debounce 100 on-scroll-end) ;; TODO only use in browsers that do not support :on-scroll-end event
                            }
-     [:style debug-inspector-styles-css]
-     [:style inspector-styles-css]
      [:div.logged "Logged"
       [:div.controls
        [:button {:on-click #(utils/log-flush!)} "flush"]
@@ -974,11 +976,13 @@
                 :on-change     (debounce 16 #(reset! *open-depth (-> % .-target .-value)))}]]
       (inspector (rum/react utils/*log) opts)]
 
-     [:div.fn-profiles "Fn profiles"
-      (inspector *fn-profiles opts)]
+     (when utils/default-tracing-enabled?
+       [:<>
+        [:div.fn-profiles "Fn profiles"
+         (inspector *fn-profiles opts)]
 
-     [:div.max-time-trace "Max time trace"
-      (inspector *max-time-trace opts)]
+        [:div.max-time-trace "Max time trace"
+         (inspector *max-time-trace opts)]])
 
      (when-let [inspected (not-empty (rum/react *inspected))]
        [:div "Inspected"

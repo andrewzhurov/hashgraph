@@ -12,8 +12,9 @@
 
 (def tutorial-z 1)
 (def debug-inspector-z 2)
+(def viz-z 2)
 
-(def view-mode-horizontal? true)
+
 (def border-radius 6)
 (def tutorial-size 300)
 (def tutorial-margin 5)
@@ -25,8 +26,16 @@
 
 (def window-height js/window.innerHeight)
 (def window-width js/window.innerWidth)
+(def view-mode-horizontal? (> window-width window-height))
 (def window-size (if view-mode-horizontal? window-width window-height))
-(def viz-size (/ (if view-mode-horizontal? window-height window-width) 3) #_(* (count hg-members/names) (+ evt-s hgs-padding)))
+
+(def viz-size (if view-mode-horizontal?
+                (/ window-height 3)
+                (-> (/ window-width 3) (* 2))))
+(def viz-margin-x (if view-mode-horizontal?
+                    (/ window-height 3)
+                    (-> window-width (- viz-size) (/ 2))))
+
 (def hgs-size (/ viz-size (count hg-members/names)))
 (def evt-s        (-> hgs-size (/ 3) ceil-even))
 (def hgs-padding  (-> hgs-size (- evt-s) (/ 2)))
@@ -65,13 +74,24 @@
 
 (def members-height 66 #_(+ members-padding-y avatar-size members-padding-y))
 (def members-padding-y (-> members-height (- avatar-size) (/ 2)))
+(def members-background-color :transparent #_"rgba(255,255,255,0.5)")
+(def member-name-font-size 18)
 
-(def load-area-size (-> tutorial-size
-                        (/ 2)
-                        (+ tutorial-margin)) #_(+ sp-padding evt-s))
+(def members-y-start (if view-mode-horizontal?
+                       0
+                       (+ control-margin control-size control-margin member-name-font-size)))
+(def members-y-end (+ members-y-start members-height))
+
+
+
+(def load-area-size (if view-mode-horizontal?
+                      (-> tutorial-size
+                          (/ 2)
+                          (+ tutorial-margin))
+                      evt-s #_(+ sp-padding evt-s)))
 (def after-viz-buffer-size (* 35 evt-offset))
 (def playback-size (ceil (-> window-size
-                             (- members-padding-y avatar-size members-padding-y load-area-size))))
+                             (- members-y-end load-area-size))))
 
 (def wit-r (* 2 evt-r))
 (def wit-s (* 2 wit-r))

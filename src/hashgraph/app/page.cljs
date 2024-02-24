@@ -6,7 +6,6 @@
    [clojure.string :as str]
    [clojure.set :as set]
    [cljs.math :refer [round floor ceil pow]]
-   [garden.core :as garden]
    [garden.selectors :as gs]
    [garden.stylesheet :refer [at-keyframes]]
    [garden.color :as gc]
@@ -19,7 +18,8 @@
 
    [hashgraph.app.state :as hga-state]
    [hashgraph.app.events :as hga-events]
-   [hashgraph.app.view :refer [t] :as hga-view]
+   [hashgraph.app.view :refer [t] :refer-macros [style-kind->css] :as hga-view]
+   [hashgraph.app.styles :refer [reg-styles! kind->css]]
    [hashgraph.app.members :as hga-members]
    [hashgraph.app.playback :as hga-playback]
    [hashgraph.app.transitions :refer [tt] :as hga-transitions]
@@ -49,40 +49,46 @@
     :dur             "0.5s"
     #_#_:repeatCount 1}])
 
-(def styles-vertical-mode
-  (into
-   [[:#viz
-     [:#render {:transition "height 0.5s"}]]]
-   hga-members/styles-vertical-mode))
+(def styles-horizontal
+  [[:#page-view {:flex-direction :row
+                 :overflow-x     :scroll
+                 :overflow-y     :hidden}]
 
-(def styles-horizontal-mode
-  (into
-   [
-    [:#page-view {:flex-direction :row
-                  :overflow-x     :scroll
-                  :overflow-y     :hidden}]
+   [:#viz-section {:height         "100vh"
+                   :display        :flex
+                   :flex-direction :column}
+    [:>* {:flex "1 1 0"}]
+    [:.bins-view {:position :sticky
+                  :left     "0px"
+                  :width    "100vw"}
+     [:.bins {:max-height (str "calc((100vh / 3) - " hga-view/scrollbar-height "px)")}]]
 
-    [:#viz-section {:height         "100vh"
-                    :display        :flex
-                    :flex-direction :column}
-     [:>* {:flex "1 1 0"}]
-     [:.bins-view {:position :sticky
-                   :left     "0px"
-                   :width    "100vw"}
-      (let [controls-end-height (+ hga-view/scrollbar-height hga-view/control-margin hga-view/control-size hga-view/control-margin)]
-        [:.bins {:max-height (str "calc((100vh / 3) - " hga-view/scrollbar-height "px)")}
-         #_{:max-height (str "calc((100vh / 3) - " controls-end-height "px)")}])]
+    [:#viz
+     [:#render {:overflow   :visible
+                :transition "width 0.5s"}]]
+    [:#inspector {:position :sticky
+                  :left     "0px"
+                  :width    "100vw"}]
 
-     [:#viz
-      [:#render {:overflow :visible
-                 :transition "width 0.5s"}]]
-     [:#inspector {:position :sticky
-                   :left     "0px"
-                   :width    "100vw"}]
+    [:#viz {:position :relative}]]])
 
-     [:#viz {:position :relative}
-      ]]]
-   hga-members/styles-horizontal-mode))
+(def styles-vertical
+  [[:#page-view {:flex-direction :column
+                 :overflow-x     :hidden
+                 :overflow-y     :scroll}]
+   [:#viz-section {:width "100vw"}
+
+    [:.bins-view {:display :none}]
+
+    [:#tutorial]
+
+    [:#viz {:position       :absolute
+            :left           (px hga-view/viz-margin-x)
+            :right          (px hga-view/viz-margin-x)
+            :pointer-events :none
+            :z-index        hga-view/viz-z}
+     [:#render {:transition "height 0.5s"}
+      [:.inspectable.active {:pointer-events :all}]]]]])
 
 (def control-size-style
   {:max-width  (px hga-view/control-size)
@@ -177,6 +183,8 @@
      [:.vote {:transition (t :stroke tt)}]]
     [:&.r-concluded
      [:.votes-wrapper {:opacity 1}]]]])
+
+(reg-styles! ::page styles styles-horizontal styles-vertical)
 
 (def vote-circumferance-start+for+end
   (memoize
@@ -500,10 +508,13 @@
    (when js/goog.DEBUG
      (hga-inspector/debug-view))])
 
-(rum/defc view []
+(rum/defc view < rum/reactive []
   [:div#root-view
-   [:style (garden/css styles)]
-   [:style (garden/css (if hga-view/view-mode-horizontal?
-                         styles-horizontal-mode
-                         styles-vertical-mode))]
+   [:style (kind->css :bare)]
+   (let [horizontal-css (kind->css :horizontal)
+         vertical-css (kind->css :vertical)]
+     [:style (if hga-view/view-mode-horizontal?
+               horizontal-css
+               vertical-css)])
+
    (page-view)])

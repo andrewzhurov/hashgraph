@@ -15,6 +15,7 @@
             [hashgraph.app.events :as hga-events]
             [hashgraph.app.playback :as hga-playback]
             [hashgraph.app.view :refer [t] :as hga-view]
+            [hashgraph.app.styles :refer [reg-styles!]]
             [hashgraph.app.utils :as hga-utils]
             [hashgraph.utils.core :refer [hash=] :refer-macros [l] :as utils]))
 
@@ -78,9 +79,7 @@
 (def styles
   [[:#tutorial {:position "relative"}
     [:.tutor-wrapper (merge cart-style
-                            {:position         "absolute"
-                             :bottom           "30px"
-                             :transform        "translateX(-50%)"
+                            {:position         :absolute
                              :box-sizing       :border-box
                              :background-color :lavender
                              :transition       (t :opacity (/ tt 1.5) "ease-in" (/ tt 5))
@@ -94,7 +93,23 @@
                       :display   :inline}]
       ]]]])
 
-(def styles-css (css styles))
+(def styles-horizontal
+  [[:#tutorial
+    [:.tutor-wrapper {:bottom    "30px"
+                      :transform "translateX(-50%)"}]]])
+
+(def styles-vertical
+  [[:#tutorial
+    [:.tutor-wrapper {;; :width "100%"
+                      :transform "translateY(-50%)"
+                      :left      "2vw"
+                      :width     "96vw"
+                      :opacity   "0.9"}
+     [:.tutor {:max-width "100% !important"
+               :width     "100% !important"}]]]])
+
+(reg-styles! ::tutorial styles styles-horizontal styles-vertical)
+
 
 (defn tutor [& text-with-is]
   (into [:div.tutor text-with-is]))
@@ -111,7 +126,9 @@
      [:div.tutor
       "Members create events, such as " (i event "this one") ".\n\n"
 
-      "(Ctrl+hover to peek, click to pin ^)"])
+      (if hga-view/view-mode-horizontal?
+        "(Ctrl+hover to peek, click to pin ^)"
+        "(tap to highlight)")])
    (fn [event]
      (when (= 1 (:event/creation-time event))
        {::on-event event
@@ -361,7 +378,9 @@
    (rum/defc tutor-and-the-beat-goes-on-view
      []
      [:div.tutor
-      "And the beat goes onnn -->"])
+      "And the beat goes onnn " (if hga-view/view-mode-horizontal?
+                                  "-->>"
+                                  "VvV")])
    (fn [event]
      (when (-> event meta ::to-tutor (= ::and-the-beat-goes-on))
        {::on-event event
@@ -582,13 +601,13 @@
 
 (def smooth-tt 250)
 (def smooth-render-styles
-  [:.smooth-render
-   [:>div {:opacity    0
-           :transition (t :opacity smooth-tt smooth-tt)}]
-   [:.showing {:opacity 1}]
-   [:.hiding {:opacity 0}]])
+  [[:.smooth-render
+    [:>div {:opacity    0
+            :transition (t :opacity smooth-tt smooth-tt)}]
+    [:.showing {:opacity 1}]
+    [:.hiding {:opacity 0}]]])
 
-(def smooth-render-styles-css (css smooth-render-styles))
+(reg-styles! ::smooth-render smooth-render-styles)
 
 (defn maybe-hide-keys! [smooth-comp to-maybe-hide-keys]
   (let [t (cljs.core/system-time)
@@ -681,14 +700,14 @@
 (rum/defc tutor-view < rum/static rum/reactive
   {:key-fn (fn [{::keys [y]}] y)}
   [{::keys [view args y] :as tutor}]
-  [:div.tutor-wrapper {:style {:left y}}
+  [:div.tutor-wrapper {:style (if hga-view/view-mode-horizontal?
+                                {:left y}
+                                {:top y})}
    (apply view args)])
 
 (rum/defc view < rum/reactive
   []
   [:div#tutorial
-   [:style styles-css]
-   [:style smooth-render-styles-css]
    (when-let [seen-latest-tutor (rum/react *seen-latest-tutor)]
      (smooth-render
       (tutor-view seen-latest-tutor)))])
