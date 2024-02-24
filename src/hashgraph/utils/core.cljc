@@ -51,7 +51,8 @@
 
 (def *id->logger (atom {}))
 (defn add-logger! [id logger] (swap! *id->logger assoc id logger))
-#?(:clj  (add-logger! :console (fn [path _with value] (println path value)))
+#?(:clj  (do (add-logger! :console (fn [path _with value] (println path value)))
+             (add-logger! :log-file (fn [path _with value] (spit "./log-file.edn" (str [path value] "\n") :append true))))
    :cljs (do (add-logger! :*log (fn [path with value] (swap! *log update-in path with value)))
              (add-logger! :*console (fn [path with value] (js/console.log path value)))))
 
@@ -95,6 +96,8 @@
   `(let [res# ~expr]
      (log! [(quote ~expr)] res#)
      res#))
+
+#?(:clj (defn l! [val] (log! val)))
 
 ;; is a letl macro and not a l-binds macro to make litner happy
 
