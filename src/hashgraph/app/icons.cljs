@@ -2,6 +2,7 @@
   (:require ["@fortawesome/react-fontawesome" :refer [FontAwesomeIcon] :as fa]
             ["@fortawesome/free-regular-svg-icons" :as far]
             ["@fortawesome/free-solid-svg-icons" :as fas]
+            ["@fortawesome/free-brands-svg-icons" :as fabr]
             ["@fortawesome/fontawesome-svg-core" :refer [library] :as fa-core]
             [goog.object]))
 
@@ -42,7 +43,8 @@
       (let [icon-name (icon-key->icon-name icon-key)
             icon (case icon-style
                    :solid   (goog.object/get fas icon-name)
-                   :regular (goog.object/get far icon-name))]
+                   :regular (goog.object/get far icon-name)
+                   :brands  (goog.object/get fabr icon-name))]
         (js/React.createElement
          FontAwesomeIcon
          (-> icon-opts
