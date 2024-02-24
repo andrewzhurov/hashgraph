@@ -1,6 +1,7 @@
 (ns hashgraph.app.home
   (:require [rum.core :as rum]
             [garden.core :refer [css] :as garden]
+            [garden.units :refer [px]]
             [garden.selectors :as gs]
             [hashgraph.app.icons :as hga-icons]
             [hashgraph.app.view :as hga-view]
@@ -57,6 +58,10 @@
               :bottom      "0px"
               :left        "50%"
               :transform   "translate(-50%, calc(50% + 0.6em))"}]]
+
+    [:.repo-link {:position :absolute
+                  :top      (px 15)
+                  :left     (px 15)}]
     ]])
 
 (def styles-horizontal
@@ -122,4 +127,6 @@
     [:div.see "See for yourself"]
     (if hga-view/view-mode-horizontal?
       (hga-icons/icon :solid :angles-right :size :2x :color :lightgray)
-      (hga-icons/icon :solid :angles-down :size :2x :color :lightgray))]])
+      (hga-icons/icon :solid :angles-down :size :2x :color :lightgray))]
+
+   [:div.repo-link [:a {:href hga-view/repo-link :target "_blank"} (hga-icons/icon :brands :github :size :2x)]]])

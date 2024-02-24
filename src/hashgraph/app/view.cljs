@@ -7,6 +7,8 @@
 (def dlt-link "https://hedera.com/learning/distributed-ledger-technologies/what-are-distributed-ledger-technologies-dlts")
 (def virtual-voting-link "https://docs.hedera.com/hedera/core-concepts/hashgraph-consensus-algorithms/virtual-voting")
 (def paper-link "https://www.swirlds.com/downloads/SWIRLDS-TR-2016-01.pdf")
+
+(def repo-link "https://github.com/andrewzhurov/hashgraph")
 (def issue-link "https://github.com/andrewzhurov/hashgraph/issues")
 (def discussions-link "https://github.com/andrewzhurov/hashgraph/discussions")
 
