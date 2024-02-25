@@ -221,6 +221,12 @@ It's all there's to it, see for yourself ->
 ** DONE mobile-friendly
 Made somewhat mobile-friendly.
 ** TODO maybe add link to github repo
+** TODO reword round tutor "received" is weird, it's already there!
+Better more like "order determined".
+** TODO reword "the hashgraph below"
+It refers to all the hashgraphs in viz.
+Whereas we need to clarify that it's done based on the hashgraph a member has.
+** TODO order of received events / middle learned events
 
 * objectives
 ** understand the algo to see how it can be applied in NG
