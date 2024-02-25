@@ -5,6 +5,7 @@
             [hashgraph.members :as hg-members]
             [hashgraph.app.view :as hga-view]
             [hashgraph.app.styles :refer [reg-styles!]]
+            [hashgraph.app.icons :as hga-icons]
             [hashgraph.app.avatars :as hga-avatars]
             [hashgraph.app.playback :as hga-playback]
             [hashgraph.app.transitions :as hga-transitions]
@@ -16,14 +17,20 @@
 (def styles
   [[:#members
     [:.member
-     [:.member-name {:font-size  hga-view/member-name-font-size
-                     :color      "black"
-                     :left       (px (/ hga-view/avatar-size 2))
-                     :margin-top (px -6)
-                     :position   :absolute
-                     :transform  "translateX(-50%)"}]
-     [:&.hardly-reachable
-      [:.member-name {:color "lightgray"}]]]]])
+     [:.info {:position   :absolute
+              :left       (px (/ hga-view/avatar-size 2))
+              :margin-top (px -6)
+              :transform  "translateX(-50%)"
+              :display    :flex}
+      [:.member-name {;; :font-size (px hga-view/member-name-font-size)
+                      :color     :black}]
+      [:.connectivity {:display      :none
+                       :position     :absolute
+                       :left         (px 0)
+                       :top          "50%"
+                       :transform    "translate(-100%, -50%)"}
+       [:&.poor {:display :block}
+        [:svg {:vertical-align :middle}]]]]]]])
 
 (def styles-horizontal
   [[:#members {:position         :fixed
@@ -36,8 +43,7 @@
                :left             (px hga-view/members-padding-y)
                :transition       (str "opacity " (/ hga-transitions/tt 2) "ms")
                :opacity          0}
-     [:&.active {:opacity 1}]
-     [:.member-name {}]]]])
+     [:&.active {:opacity 1}]]]])
 
 (def styles-vertical
   [[:#members {:position         :fixed
@@ -50,8 +56,7 @@
                :top        (px hga-view/members-padding-y)
                :transition (str "opacity " (/ hga-transitions/tt 2) "ms")
                :opacity    0}
-     [:&.active {:opacity 1}]
-     [:.member-name {}]]]])
+     [:&.active {:opacity 1}]]]])
 
 (reg-styles! ::members styles styles-horizontal styles-vertical)
 
@@ -63,15 +68,19 @@
      (for [member-name hg-members/names]
        (let [member    (hg-members/member-name->person member-name)
              active?   (contains? stake-map member-name)
-             stake-pos (/ (get stake-map member-name) hg/total-stake)]
+             stake-pos (/ (get stake-map member-name) hg/total-stake)
+             hardly-reachable? (hg-members/hardly-reachable-member-names member-name)]
          [:div.member {:key   member-name
-                       :class [(when active? "active")
-                               (when (hg-members/hardly-reachable-member-names member-name) "hardly-reachable")]
+                       :class [(when active? "active")]
                        :style {(if hga-view/view-mode-horizontal? :top :left) (- (hga-view/idx->x (:member/idx member))
                                                                                  (/ hga-view/avatar-size 2))}}
           (case (:member/gender member)
             :male   (hga-avatars/male-avatar   (color-rgba-str (:member/color-rgb member) 1) (color-rgba-str (:member/color-rgb member) stake-pos))
             :female (hga-avatars/female-avatar (color-rgba-str (:member/color-rgb member) 1) (color-rgba-str (:member/color-rgb member) stake-pos))
             [:div "unknown gender"])
-          [:div.member-name
-           member-name]]))]))
+          [:div.info
+           [:div.member-name
+            member-name]
+           [:div.connectivity {:class (when hardly-reachable? "poor")
+                               :title "Poor connectivity"}
+            (hga-icons/icon :solid :poor-connectivity :size :sm)]]]))]))
