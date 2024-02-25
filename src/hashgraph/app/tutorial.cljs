@@ -316,7 +316,7 @@
    (rum/defc tutor-why-all-of-this-p1-view
      []
      [:div.tutor.unbound
-      "Phew? Been plenty enough?. Well, sorry, it's almost all there.\n"
+      "Phew? Been plenty enough? Well, sorry, it's almost all there is.\n"
       "But what's all this hussle for, again?\n\n"
 
       "Events may carry a transaction - some arbitrary code to run.\n"
