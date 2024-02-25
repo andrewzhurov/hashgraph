@@ -17,20 +17,19 @@
 (def styles
   [[:#members
     [:.member
-     [:.info {:position   :absolute
-              :left       (px (/ hga-view/avatar-size 2))
-              :margin-top (px -6)
-              :transform  "translateX(-50%)"
-              :display    :flex}
-      [:.member-name {;; :font-size (px hga-view/member-name-font-size)
-                      :color     :black}]
-      [:.connectivity {:display      :none
-                       :position     :absolute
-                       :left         (px 0)
-                       :top          "50%"
-                       :transform    "translate(-100%, -50%)"}
-       [:&.poor {:display :block}
-        [:svg {:vertical-align :middle}]]]]]]])
+     [:.member-name {:position   :absolute
+                     :left       (px (/ hga-view/avatar-size 2))
+                     :margin-top (px -6)
+                     :transform  "translateX(-50%)"
+                     ;; :font-size (px hga-view/member-name-font-size)
+                     :color      :black}]
+     [:.connectivity {:display       :none
+                      :position      :absolute
+                      :bottom        (px -2)
+                      :right         (px -2)
+                      #_#_:transform "translate(-100%, -50%)"}
+      [:&.poor {:display :block}
+       [:svg {:vertical-align :middle}]]]]]])
 
 (def styles-horizontal
   [[:#members {:position         :fixed
@@ -78,9 +77,10 @@
             :male   (hga-avatars/male-avatar   (color-rgba-str (:member/color-rgb member) 1) (color-rgba-str (:member/color-rgb member) stake-pos))
             :female (hga-avatars/female-avatar (color-rgba-str (:member/color-rgb member) 1) (color-rgba-str (:member/color-rgb member) stake-pos))
             [:div "unknown gender"])
-          [:div.info
-           [:div.member-name
-            member-name]
-           [:div.connectivity {:class (when hardly-reachable? "poor")
-                               :title "Poor connectivity"}
-            (hga-icons/icon :solid :poor-connectivity :size :sm)]]]))]))
+
+          [:div.connectivity {:class (when hardly-reachable? "poor")
+                              :title "Poor connectivity"}
+           (hga-icons/icon :solid :poor-connectivity :size :sm)]
+
+          [:div.member-name
+           member-name]]))]))
