@@ -160,8 +160,8 @@
       "This alone builds the structure of how members\n"
       "communicated with each other - a (hash)graph of gossip!\n\n"
 
-      "Well, was it shorter than expected? Sorry to disapoint. -_-\n"
-      "...\n"
+      "Well, was it shorter than expected? Sorry to disapoint. -_-\n\n"
+
       "...okaay! We didn't get events ordered yet,\n"
       "now to the virtual voting bit.. it'll be more juicy."])
    (fn [event]
@@ -189,7 +189,8 @@
    (rum/defc tutor-witness-view < rum/reactive
      [r1-ws]
      [:div.tutor
-      "First event of each member in a round is considered to be a witness.\n"
+      "First event of each member in a round is considered to be a witness.\n\n"
+
       "These are " (i r1-ws "witnesses of 1st round") "."
       #_"This is one interesting twist of voting. Instead of voting on order of each event individually, we can vote on fame of witnesses."])
    (fn [event]
@@ -293,11 +294,12 @@
       "of " (i r1-ws "the round 1 witnesses") " by deriving " (i votes "virtual votes") " \n"
       "from " (i r2-ws "the round 2 witnesses") ".\n\n"
 
-      "Witness is considered to be famous when it received > 2/3 'famous' votes.\n"
-      "The next round witness vote 'famous' if it can see that witness.\n\n"
+      "Witness is considered to be famous when it received > 2/3 'yes' votes.\n"
+      "The next round witness vote 'yes' if it can see that witness.\n\n"
 
       "And so each of the " (i r2-ws "round 2 witnesses") " voted for each of the " (i r1-ws "round 1 witnesses") ".\n"
-      "All of the votes are 'famous'."])
+      "All of the votes are 'yes'.\n"
+      "And so " (i r3-mw "the round 3 witness") " concludes all round 1 witnesses to be famous."])
    (fn [event]
      (when (-> event meta ::to-tutor (= ::votes))
        (let [cr    (hg/->concluded-round event)
@@ -319,7 +321,8 @@
 
       "Events may carry a transaction - some arbitrary code to run.\n"
       "Transactions may conflict with each other, e.g., the famous double-spend.\n"
-      "Having they be executed in parallel - we'd end up in a messed up state, how horrible is that?!"])
+      "Having they be executed in parallel - we'd end up in a messed up state,\n"
+      "how horrible would that be?!"])
    (fn [event]
      (when (-> event meta ::to-tutor (= ::why-all-this-p1))
        {::on-event event
@@ -503,7 +506,7 @@
       "- an exemplar of tech beauty.\n\n"
 
       "I hope this viz made the simple thing easy.\n"
-      "Love it? Hate it? " [:a {:href hga-view/discussions-link :target "_blank"} "Let me know!"] "\n\n"
+      "Love it? Hate it? " [:a {:href hga-view/discussions-link :target "_blank"} "Let me know!"]
       #_#_#_"If not, well.. " [:a {:href hga-view/discussions-link :target "_blank"} "reach out"] " with a spare tomato. (:"])
    (fn [event]
      (when (= 1 (count @*left-view->state-fn))
