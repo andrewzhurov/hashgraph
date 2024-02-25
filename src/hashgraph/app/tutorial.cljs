@@ -174,8 +174,8 @@
    (rum/defc tutor-round-view < rum/reactive
      [event round]
      [:div.tutor
-      "In order for an " (i event "event") " to be received, it's order must be concluded.\n"
-      #_"This is done by via virtual voting.\n"
+      ;; "In order for an " (i event "event") " to be received, it's order must be concluded.\n"
+      ;; "This is done by via virtual voting.\n"
       "Step #1 is to determine " (i round "event's round number") "."])
    (fn [event]
      (when (= 3 (hg/index event))
