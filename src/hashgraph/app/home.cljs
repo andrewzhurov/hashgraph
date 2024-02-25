@@ -30,7 +30,8 @@
                          :flex-direction  :row
                          :justify-content :center
                          :align-items     :center}
-     [:svg {:margin-left "10px"}]]
+     [:.see {:margin-left (px 3)}]
+     [:svg {:margin-left (px 5)}]]
 
     [:.def.distributed-ledger {:font-size "24px"}]
     [:.def.virtual-voting {:font-size "28px"}]
