@@ -12,10 +12,9 @@
 (def issue-link "https://github.com/andrewzhurov/hashgraph/issues")
 (def discussions-link "https://github.com/andrewzhurov/hashgraph/discussions")
 
-(def tutorial-z 1)
-(def debug-inspector-z 2)
-(def viz-z 2)
-
+(def debug-inspector-z 1)
+(def tutorial-z 2)
+(def viz-z 3)
 
 (def border-radius 6)
 (def tutorial-size 300)
