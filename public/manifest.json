@@ -1,0 +1,6 @@
+{"name": "Hashgraph Visualization",
+ "short_name": "Hashgraph Viz",
+ "start_url": ".",
+ "display": "fullscreen",
+ "background_color": "#fff",
+ "description": "Hashgraph Visualization, or how to build a distributed ledger with virtual voting and gossip about gossip alone."}
