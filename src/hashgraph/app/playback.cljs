@@ -229,7 +229,7 @@
           (let [dt (- t lt)
                 px (-> play-scroll-px-per-ms (* dt))]
             (viz-scroll-by! px :smooth? false)))
-        (js/requestAnimationFrame (partial play! t))))))
+        (hga-utils/schedule (partial play! t))))))
 
 (add-watch hga-state/*playback-playing? ::run-play
            (fn [_ _ old new]
