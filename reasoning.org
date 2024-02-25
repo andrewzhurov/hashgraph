@@ -206,7 +206,7 @@ It's all there's to it, see for yourself ->
 * FIXES
 ** DONE "This event's transaction, issued by BLANK"
 ** DONE tutors get cut height-wise
-** TODO not inspected on click on "seen Charlie's event"
+** DONE not inspected on click on "seen Charlie's event"
 ** TODO >| does not scroll to next
 ** TODO >>| does nothing
 ** TODO |<< transitions are slowpoke
@@ -214,13 +214,14 @@ It's all there's to it, see for yourself ->
 ** TODO Ctrl+hover may not be intuitive
 ** TODO may not be intuitive to hover over text
 ** TODO stake change _from_ _to_ may not be intuitive
+** TODO fix damm slow custom transitions on mobile
 * More
 ** TODO introduce members
 ** TODO perhaps show db
 ** TODO perhaps make it more insteresting than increment a counter
 ** DONE mobile-friendly
 Made somewhat mobile-friendly.
-** TODO maybe add link to github repo
+** DONE maybe add link to github repo
 ** DONE reword round tutor "received" is weird, it's already there!
 Better more like "order determined".
 ** DONE reword "the hashgraph below"
