@@ -1088,3 +1088,20 @@ identical?
  (let [a 1]
    (let [b (+ a a)]
      b)))
+
+
+#_
+(extend-type garden.types/CSSUnit
+  Object
+  (toString [{:keys [unit magnitude]}]
+    (str magnitude (name unit))))
+#_
+(+ (gu/ms 100) 100)
+;; + works CSSUnit as (toString aCSSUnit) - no good.
+
+
+#_(defonce _make-obj-lookapable
+  (set! (.. js/Object -prototype -call) (fn [_ k] (println k) (this-as this (goog.object/get this k)))))
+;; It's a field.
+;; I thought to use it for mory comfy lookup of transitions view-state,
+;; but since it's a field, transition engine treats it like a prop - no good.

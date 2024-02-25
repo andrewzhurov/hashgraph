@@ -18,14 +18,6 @@
              :refer-macros [l letl defn*]
              :as utils]))
 
-#_
-(extend-type garden.types/CSSUnit
-  Object
-  (toString [{:keys [unit magnitude]}]
-    (str magnitude (name unit))))
-#_
-(+ (gu/ms 100) 100)
-
 (def tt 500) ;; transition time ms
 
 ;; These states are used to trigger view transitions.
@@ -33,12 +25,6 @@
 ;; *just-rewinded> events transition from their current position back to other-parent (as though time's rewinded)
 (def view-id->view-state (js-map))
 (def view-state->with-t? (js-map))
-
-#_(js/console.log (js-map/js-map->clj-map view-id->view-state))
-#_(js/console.log (js-map/js-map->clj-map view-state->with-t?))
-
-#_(defonce _make-obj-lookapable
-  (set! (.. js/Object -prototype -call) (fn [_ k] (println k) (this-as this (goog.object/get this k)))))
 
 (defn subscribe-to-view-state-change [view-state react-comp]
   (js-map/assoc-in! view-state [:view-state/subscribed-react-comps react-comp] true))
@@ -76,7 +62,6 @@
       (let [prop->t (js-map/js-map)]
         (js-map/assoc! view-state :view-state/prop->t prop->t)
         prop->t)))
-
 
 
 (add-watch hga-state/*just-played< ::just-played-transitions-on-playback
