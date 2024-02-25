@@ -59,6 +59,19 @@
         (js/setTimeout #(do (apply f args)
                             (vreset! idle?* true)))))))
 
+(def *after-render-cb-id->cb (volatile! (hash-map)))
+
+(rum/defc after-render-cbs-trigger < render-always-mixin
+  {:after-render (fn [state]
+                   (when-let [cbs (not-empty (vals @*after-render-cb-id->cb))]
+                     (vreset! *after-render-cb-id->cb (hash-map))
+                     (doseq [cb cbs]
+                       (cb)))
+                   state)}
+  [])
+
+(defn after-render [id cb] (vswap! *after-render-cb-id->cb assoc id cb))
+
 (defn once-per-render
   [f]
   (let [*ran? (volatile! false)]
