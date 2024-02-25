@@ -43,7 +43,8 @@
             :justify-content :center}
      [:.with-meta {:position :relative}
       [:.sym {:font-weight :bold
-              :font-size   "1em"}]
+              :font-size   "1em"}
+       [:a {:color :black}]]
       [:.meta {:font-size   "0.6em" #_desc-size
                :width       :fit-content
                :white-space :nowrap
