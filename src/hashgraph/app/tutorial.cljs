@@ -210,13 +210,13 @@
            m2-evt (:sees/seee sees-m2)
            m1     (hg/creator m1-evt)
            m2     (hg/creator m2-evt)
-           ss-m1  (i [(:sees/path sees-m1) sees-m1] "strongly sees " (i m1-evt (str m1 "'s event")))
-           ss-m2  (i [(:sees/path sees-m2) sees-m2] "strongly sees " (i m2-evt (str m2 "'s event")))]
+           ss-m1  (i sees-m1 "strongly sees")
+           ss-m2  (i sees-m2 "strongly sees")]
        [:div.tutor
         "An event may see that many members see another event, a so-called 'strongly see'.\n\n"
 
-        (i event "This event") " " ss-m1 "\n"
-        " and also " ss-m2 "."]))
+        (i event "This event") " " ss-m1 " " (i m1-evt (str m1 "'s event")) "\n"
+        " and also " ss-m2 " " (i m2-evt (str m2 "'s event")) "."]))
    (fn [event]
      (when (-> event meta ::to-tutor (= ::strongly-seeing))
        (let [cr                (hg/->concluded-round event)
@@ -233,15 +233,15 @@
            m1     (hg/creator m1-evt)
            m2     (hg/creator m2-evt)
            m3     (hg/creator m3-evt)
-           ss-m1  (i [(:sees/path seen-m1) seen-m1] "strongly sees " (i m1-evt (str m1 "'s event")))
-           ss-m2  (i [(:sees/path seen-m2) seen-m2] "strongly sees " (i m2-evt (str m2 "'s event")))
-           ss-m3  (i [(:sees/path seen-m3) seen-m3] "strongly sees " (i m3-evt (str m3 "'s event")))]
+           ss-m1  (i [seen-m1] "strongly sees")
+           ss-m2  (i [seen-m2] "strongly sees")
+           ss-m3  (i [seen-m3] "strongly sees")]
        [:div.tutor
         (i round "Round number") " increases when an " (i event "event") " strongly sees events of a previous round from many members.\n\n"
 
-        (i event "This event") " " ss-m1 ",\n"
-        "as well " ss-m2 ",\n"
-        "and finally " ss-m3 ",\n"
+        (i event "This event") " " ss-m1 " " (i m1-evt (str m1 "'s event")) ",\n"
+        "as well " ss-m2 " " (i m2-evt (str m2 "'s event")) ",\n"
+        "and finally " ss-m3 " " (i m3-evt (str m3 "'s event")) ",\n"
         "so events of a previous round from many members (all, in this case) "
         "are strongly seen, and so the round number is incremented."]))
    (fn [event] (let [cr    (hg/->concluded-round event)

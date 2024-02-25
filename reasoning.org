@@ -227,6 +227,7 @@ Better more like "order determined".
 It refers to all the hashgraphs in viz.
 Whereas we need to clarify that it's done based on the hashgraph a member has.
 ** TODO order of received events / middle learned events
+** DONE see path to highlight only the path, and don't pollute inspector with path events
 
 * objectives
 ** understand the algo to see how it can be applied in NG
