@@ -49,12 +49,6 @@
                js/window.msRequestAnimationFrame))
       #(js/setTimeout % 16)))
 
-(defn on-next-frame! [callback]
-  (js/setTimeout #(js/requestAnimationFrame callback)))
-
-(defn on-animation-frame! [callback]
-  (js/requestAnimationFrame callback))
-
 (defn async-idle
   "Async evokations of this function will evoke f only when it's not currently running - is idle."
   [f]
