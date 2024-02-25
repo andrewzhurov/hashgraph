@@ -32,6 +32,27 @@
       {:d
        "M34,16v1.2l-2.6-2.6a1.9,1.9,0,0,0-3,.2,2.1,2.1,0,0,0,.2,2.7l6,5.9a1.9,1.9,0,0,0,2.8,0l6-5.9a2.1,2.1,0,0,0,.2-2.7,1.9,1.9,0,0,0-3-.2L38,17.2V16a14,14,0,0,0-28,0v6a2,2,0,0,0,4,0V16a10,10,0,0,1,20,0Z"}]]]))
 
+(defn poor-connectivity [opts]
+  (svg-fa
+   opts
+   [:g {:id "SVGRepo_bgCarrier", :stroke-width "0"}]
+   [:g
+    {:id              "SVGRepo_tracerCarrier",
+     :stroke-linecap  "round",
+     :stroke-linejoin "round"}]
+   [:g
+    {:id "SVGRepo_iconCarrier"}
+    [:g
+     {:fill  "#2e3436"
+      :style {:scale "2.5"}}
+     [:path
+      {:d
+       "m 5 7 c -0.554688 0 -1 0.445312 -1 1 v 6 c 0 0.554688 0.445312 1 1 1 h 1 c 0.554688 0 1 -0.445312 1 -1 v -6 c 0 -0.554688 -0.445312 -1 -1 -1 z m -4 3 c -0.554688 0 -1 0.445312 -1 1 v 3 c 0 0.554688 0.445312 1 1 1 h 1 c 0.554688 0 1 -0.445312 1 -1 v -3 c 0 -0.554688 -0.445312 -1 -1 -1 z m 0 0"}]
+     [:path
+      {:d
+       "m 13 1 c -0.554688 0 -1 0.445312 -1 1 v 12 c 0 0.554688 0.445312 1 1 1 h 1 c 0.554688 0 1 -0.445312 1 -1 v -12 c 0 -0.554688 -0.445312 -1 -1 -1 z m -4 3 c -0.554688 0 -1 0.445312 -1 1 v 9 c 0 0.554688 0.445312 1 1 1 h 1 c 0.554688 0 1 -0.445312 1 -1 v -9 c 0 -0.554688 -0.445312 -1 -1 -1 z m 0 0",
+       :fill-opacity "0.34902"}]]]))
+
 (defn icon-key->icon-name [icon-key]
   (apply str "fa" (-> (name icon-key)
                       (clojure.string/split #"-")
@@ -44,6 +65,7 @@
                    :style {:color color}}]
     (case icon-key
       :transfer (transfer icon-opts)
+      :poor-connectivity (poor-connectivity icon-opts)
 
       (let [icon-name (icon-key->icon-name icon-key)
             icon (case icon-style
