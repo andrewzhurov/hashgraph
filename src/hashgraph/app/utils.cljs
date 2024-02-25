@@ -71,6 +71,13 @@
                                (per-animation-frame-cb)
                                (per-animation-frame-while per-animation-frame-cb while-pred))))
 
+(def schedule
+  (or (and (exists? js/window)
+           (or js/window.requestAnimationFrame
+               js/window.webkitRequestAnimationFrame
+               js/window.mozRequestAnimationFrame
+               js/window.msRequestAnimationFrame))
+      #(js/setTimeout % 16)))
 
 
 (def static-by-hashes
