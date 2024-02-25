@@ -66,7 +66,7 @@
       (when-not @*ran?
         (vreset! *ran? true)
         (apply f args)
-        (js/requestAnimationFrame (fn [] (vreset! *ran? false)))))))
+        (schedule (fn [] (vreset! *ran? false)))))))
 
 (defn per-animation-frame-while [per-animation-frame-cb while-pred]
   (js/requestAnimationFrame #(when (while-pred)
