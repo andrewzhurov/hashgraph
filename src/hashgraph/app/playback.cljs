@@ -133,7 +133,9 @@
           #_(js/console.log "on idle buffering more events")
           (let [playback-events< (->playback-events< @*playback)
                 new-just-left<   (hga-events/issue playback-events< left<
-                                                 (fn [new-events<] (> (utils/*->time*) issue-on-iddle-for-ms))
+                                                   ;; Maybe use IdleDeadline.timeRemaining()
+                                                   ;; However, in my browser it's not available.. which's strange.
+                                                   (fn [new-events<] (> (utils/*->time*) issue-on-iddle-for-ms))
                                                  #_(constantly true) ;; issue one at a time
                                                  #_(fn [new-events] (>= (count new-events) 10)))]
             (reset! *just-left< new-just-left<)))))
