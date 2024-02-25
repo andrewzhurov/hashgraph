@@ -72,7 +72,6 @@
          count
          (> hg-members/many)))))
 
-#_
 (def events
   "Returns a set of events known to x."
   (memoize

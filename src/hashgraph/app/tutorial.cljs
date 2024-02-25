@@ -329,30 +329,38 @@
    (rum/defc tutor-why-all-of-this-p2-view
      []
      [:div.tutor.unbound
-      "But let's not PaNiC! One of the solutions to that is to find total order of transactions.\n\n"
+      "But let's not PaNiC!\n"
+      "One of the solutions to that is to find total order of transactions.\n\n"
 
       "... and having concluded fame of round witnesses we're able to do just that,\n"
       "events that are seen by all famous witnesses can be put in total order, ha!\n\n"
 
-      "But what _is_ that order? How _are_ they sorted??"])
+      "But what _is_ that order??"])
    (fn [event]
      (when (-> event meta ::to-tutor (= ::why-all-this-p2))
        {::on-event event
         ::y        (->y event)
         ::args     []}))
 
-   (rum/defc tutor-why-all-of-this-p3-view
-     []
+   (rum/defc tutor-why-all-of-this-p3-view < rum/reactive
+     [last-re]
      [:div.tutor.unbound
-      "That's a fair question, let's try to give a fair answer.\n"
-      "We could derive 'received time' of an event as median time of the events\n"
-      "from each member that first learned about it - this way whatever event gets\n"
-      "seen by the majority is considered to be first - seems fair?"])
+      "That's a fair question, let's try to give a fair answer.\n\n"
+
+      "We could derive 'received time' of " (i (:received-event/event last-re) "an event") " as median time\n"
+      "of the " (i (:received-event/learned-by last-re) " events from each member that first learned about it") ".\n\n"
+
+      "This way whatever event gets seen by the majority first\n"
+      "is considered to be first - seems fair?"])
    (fn [event]
-     (when (-> event meta ::to-tutor (= ::why-all-this-p3))
-       {::on-event event
-        ::y        (->y event)
-        ::args     []}))
+     (when (= (hg/creator event) hg/main-creator)
+       (let [cr (hg/->concluded-round event)]
+         (when (= 2 (:concluded-round/r cr))
+           (let [last-re (:concluded-round/last-received-event cr)
+                 p3-event (->> event hg/events (some (fn [e] (when (-> e meta ::to-tutor (= ::why-all-this-p3)) e))))]
+             {::on-event p3-event
+              ::y        (->y p3-event)
+              ::args     [last-re]})))))
 
    (rum/defc tutor-events-received-view < rum/reactive
      [r4-cw r2-cr]
