@@ -12,6 +12,7 @@
             [hashgraph.app.timing :as hga-timing]
             [hashgraph.app.state :as hga-state]
             [hashgraph.app.events :as hga-events]
+            [hashgraph.app.utils :as hga-utils]
             [hashgraph.utils.core :refer [log!
                                           safe-assoc! safe-assoc-in!
                                           safe-update! safe-update-in!]
@@ -252,9 +253,9 @@
 
 (defn run-each-frame! []
   (current->desired-run!)
-  (js/requestAnimationFrame run-each-frame!))
+  (hga-utils/schedule run-each-frame!))
 
-(run-each-frame!)
+(defonce _runner (run-each-frame!))
 
 (defn mixin [id args->view-id]
   {:will-mount    (fn [state]
