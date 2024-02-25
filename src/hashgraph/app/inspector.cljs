@@ -119,13 +119,12 @@
      [:.child-traces {:display :flex}
       [:.child-trace {}]]]]
 
-   [:.inspectable {
-                   :unselectable        "on"
+   [:.inspectable {:unselectable        "on"
                    :user-select         :none ;; /* CSS3 (little to no support) */
                    :-ms-user-select     :none ;; /* IE 10+ */
                    :-moz-user-select    :none ;; /* Gecko (Firefox) */
                    :-webkit-user-select :none ;; /
-                   :transition          "background-color 0.4s"}
+                   :transition          (t :background-color 400)}
     [:&.active {:cursor :pointer}]
     [:&.inspected
      {:background-color "rgba(0,0,0,0.05)"}]
