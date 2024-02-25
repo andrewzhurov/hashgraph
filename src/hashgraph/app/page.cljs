@@ -490,11 +490,10 @@
                                                               (js-obj scroll-coord px)))) ;; doesn't scroll pixel-perfect on zoom
                                         ))
        (.addEventListener dom-node "scroll"
-                          (fn [e]
-                            (hga-utils/after-render
-                             ::viz-scrollreset!
-                             #(reset! hga-state/*viz-scroll (- (-> e (.-target) (goog.object/get scroll-attr))
-                                                               hga-view/window-size)))))
+                          (hga-utils/once-per-render
+                           (fn [e]
+                             (reset! hga-state/*viz-scroll (- (-> e (.-target) (goog.object/get scroll-attr))
+                                                              hga-view/window-size)))))
        (.focus dom-node
                ;; focusVisible works only in Firefox atm https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/focus#browser_compatibility
                ;; overriding :outline manually in styles
@@ -502,7 +501,7 @@
      state)}
   []
   [:div#page-view {:tab-index  -1} ;; to be able to focus on load ^, so keyboard events trigger scroll
-   (hga-utils/after-render-cbs-trigger)
+   (hga-utils/render-cbs-trigger)
    (hga-home/view)
    (viz-section-view)
    (controls-view)

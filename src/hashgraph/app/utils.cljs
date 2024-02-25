@@ -41,14 +41,6 @@
    [:div {:style {:color "lightgray"}} plug-name]])
 
 
-(def schedule
-  (or (and (exists? js/window)
-           (or js/window.requestAnimationFrame
-               js/window.webkitRequestAnimationFrame
-               js/window.mozRequestAnimationFrame
-               js/window.msRequestAnimationFrame))
-      #(js/setTimeout % 16)))
-
 (defn async-idle
   "Async evokations of this function will evoke f only when it's not currently running - is idle."
   [f]
@@ -59,10 +51,18 @@
         (js/setTimeout #(do (apply f args)
                             (vreset! idle?* true)))))))
 
-(def *after-render-cb-id->cb (volatile! (hash-map)))
+(def *before-render-cb-id->cb (volatile! (hash-map)))
+#_(def *after-render-cb-id->cb (volatile! (hash-map)))
 
-(rum/defc after-render-cbs-trigger < render-always-mixin
-  {:after-render (fn [state]
+
+(rum/defc render-cbs-trigger < render-always-mixin
+  {:before-render (fn [state]
+                    (when-let [cbs (not-empty (vals @*before-render-cb-id->cb))]
+                      (vreset! *before-render-cb-id->cb (hash-map))
+                      (doseq [cb cbs]
+                        (cb)))
+                    state)
+   #_#_:after-render (fn [state]
                    (when-let [cbs (not-empty (vals @*after-render-cb-id->cb))]
                      (vreset! *after-render-cb-id->cb (hash-map))
                      (doseq [cb cbs]
@@ -70,16 +70,34 @@
                    state)}
   [])
 
-(defn after-render [id cb] (vswap! *after-render-cb-id->cb assoc id cb))
+(defn before-render [id cb] (vswap! *before-render-cb-id->cb assoc id cb))
+#_(defn after-render [id cb] (vswap! *after-render-cb-id->cb assoc id cb))
+
+(def schedule
+  (or (and (exists? js/window)
+           (or js/window.requestAnimationFrame
+               js/window.webkitRequestAnimationFrame
+               js/window.mozRequestAnimationFrame
+               js/window.msRequestAnimationFrame))
+      #(js/setTimeout % 16)))
+
+(def ?request-animation-frame
+  (and (exists? js/window)
+       (or js/window.requestAnimationFrame
+           js/window.webkitRequestAnimationFrame
+           js/window.mozRequestAnimationFrame
+           js/window.msRequestAnimationFrame)))
 
 (defn once-per-render
   [f]
-  (let [*ran? (volatile! false)]
+  (let [*ran? (volatile! false)
+        schedule* (or ?request-animation-frame
+                      (partial before-render (random-uuid)))]
     (fn [& args]
       (when-not @*ran?
         (vreset! *ran? true)
         (apply f args)
-        (schedule (fn [] (vreset! *ran? false)))))))
+        (schedule* (fn [] (vreset! *ran? false)))))))
 
 (defn per-animation-frame-while [per-animation-frame-cb while-pred]
   (js/requestAnimationFrame #(when (while-pred)

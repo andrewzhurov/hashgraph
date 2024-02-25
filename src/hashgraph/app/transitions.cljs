@@ -251,9 +251,12 @@
          (when (js-map/empty? prop->t)
            (js-map/dissoc! view-state->with-t? view-state)))))))
 
-(defn run-each-frame! []
-  (current->desired-run!)
-  (hga-utils/schedule run-each-frame!))
+(def run-each-frame!
+  (let [schedule (or hga-utils/?request-animation-frame
+                     (partial hga-utils/before-render ::run-transitions))]
+    (fn []
+      (current->desired-run!)
+      (schedule run-each-frame!))))
 
 (defonce _runner (run-each-frame!))
 
