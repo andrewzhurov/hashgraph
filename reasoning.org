@@ -208,6 +208,7 @@ It's all there's to it, see for yourself ->
 ** DONE tutors get cut height-wise
 ** DONE not inspected on click on "seen Charlie's event"
 ** TODO >| does not scroll to next
+Still reproduces?
 ** TODO >>| does nothing
 ** TODO |<< transitions are slowpoke
 ** TODO arrow on home may not be an intuitive action to scroll
@@ -215,6 +216,7 @@ It's all there's to it, see for yourself ->
 ** TODO may not be intuitive to hover over text
 ** TODO stake change _from_ _to_ may not be intuitive
 ** TODO fix damm slow custom transitions on mobile
+Somewhat fixed.
 * More
 ** TODO introduce members
 ** TODO perhaps show db
@@ -229,6 +231,9 @@ It refers to all the hashgraphs in viz.
 Whereas we need to clarify that it's done based on the hashgraph a member has.
 ** DONE explain order of received events / middle learned events
 ** DONE see path to highlight only the path, and don't pollute inspector with path events
+** TODO explain no leaders
+** TODO explain spin up private
+** TODO explain or use public Heder, Consensus as a Sevrice
 
 * objectives
 ** understand the algo to see how it can be applied in NG
