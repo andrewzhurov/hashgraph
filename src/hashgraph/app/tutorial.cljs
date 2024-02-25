@@ -276,7 +276,7 @@
 
       "The voting is virtual, no actual votes are issued and send,\n"
       "rather each member will derive how other members _would_ vote,\n"
-      "based on the history of the communication (the hashgraph below)."])
+      "based on the history of the communication (a hashgraph) a member has."])
    (fn [event]
      (when (-> event meta ::to-tutor (= ::witnesses-will-vote))
        (let [cr    (hg/->concluded-round event)
