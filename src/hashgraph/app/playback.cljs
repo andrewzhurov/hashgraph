@@ -288,7 +288,7 @@
 
 (def playback-controls-styles
   [[:.playback-controls {:position        :fixed
-                         :bottom          (px (+ hga-view/scrollbar-height hga-view/control-margin))
+                         :bottom          (px hga-view/controls-y-start)
                          :left            "50%"
                          :right           "0px"
                          :transform       "translateX(-50%)"

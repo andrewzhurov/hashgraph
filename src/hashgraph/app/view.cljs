@@ -67,6 +67,7 @@
 (def control-size 56)
 (def scrollbar-height 15)
 (def control-margin 5)
+(def controls-y-start (+ control-margin (when view-mode-horizontal? scrollbar-height)))
 
 (def evt-offset (ceil (+ evt-s sp-padding)))
 (def avatar-size 40)
