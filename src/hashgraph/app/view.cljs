@@ -33,9 +33,7 @@
 (def viz-size (if view-mode-horizontal?
                 (/ window-height 3)
                 (-> (/ window-width 3) (* 2))))
-(def viz-margin-x (if view-mode-horizontal?
-                    (/ window-height 3)
-                    (-> window-width (- viz-size) (/ 2))))
+(def viz-margin-x (-> window-size (- viz-size) (/ 2)))
 
 (def hgs-size (/ viz-size (count hg-members/names)))
 (def evt-s        (-> hgs-size (/ 3) ceil-even))
