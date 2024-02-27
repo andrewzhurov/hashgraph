@@ -272,8 +272,7 @@
    (rum/defc tutor-witnesses-will-vote-view < rum/reactive
      [r2-ws r1-ws]
      [:div.tutor.unbound
-      "These " (i r2-ws "round 2 witnesses") " will vote on fame\n"
-      "of the " (i r1-ws "round 1 witnesses") ".\n"
+      "These " (i r2-ws "round 2 witnesses") " will vote on fame of the " (i r1-ws "round 1 witnesses") ".\n"
       "Voting will be done by a round 3 witness.\n\n"
 
       "The voting is virtual, no actual votes are issued and send,\n"
@@ -291,12 +290,11 @@
    (rum/defc tutor-votes-view < rum/reactive
      [r3-mw r2-ws r1-ws votes]
      [:div.tutor.unbound
-      (i r3-mw "This round 3 witness") " ran virtual voting regarding fame\n"
-      "of " (i r1-ws "the round 1 witnesses") " by deriving " (i votes "virtual votes") " \n"
-      "from " (i r2-ws "the round 2 witnesses") ".\n\n"
+      (i r3-mw "This round 3 witness") " ran virtual voting regarding fame of " (i r1-ws "the round 1 witnesses") "\n"
+      "by deriving " (i votes "virtual votes") " from " (i r2-ws "the round 2 witnesses") ".\n\n"
 
       "Witness is considered to be famous when it received > 2/3 'yes' votes.\n"
-      "The next round witness vote 'yes' if it can see that witness.\n\n"
+      "The next round witness votes 'yes' if it can see that witness.\n\n"
 
       "And so each of the " (i r2-ws "round 2 witnesses") " voted for each of the " (i r1-ws "round 1 witnesses") ".\n"
       "All of the votes are 'yes'.\n"
