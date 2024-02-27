@@ -118,7 +118,7 @@
 (def ->y hga-view/evt->y)
 
 (declare *left-view->state-fn)
-(declare *tutors-ordered)
+(declare *tutors-playback)
 
 (def view->state-fn
   {
@@ -511,7 +511,7 @@
       #_#_#_"If not, well.. " [:a {:href hga-view/discussions-link :target "_blank"} "reach out"] " with a spare tomato. (:"])
    (fn [event]
      (when (= 1 (count @*left-view->state-fn))
-       (let [last-on-event-creation-time (->> @*tutors-ordered last ::on-event hg/creation-time)]
+       (let [last-on-event-creation-time (->> @*tutors-playback :left< last ::on-event hg/creation-time)]
          (when (> (hg/creation-time event) (-> last-on-event-creation-time (+ hga-view/window-size)))
            {::on-event event
             ::y        (->y event)
@@ -519,19 +519,16 @@
    })
 
 
-(def *tutors (atom []))
-(def *tutors-ordered (rum/derived-atom [*tutors] ::derive-ordered-tutors
-                       (fn [tutors]
-                         (sort-by ::y tutors))))
+(def *tutors-playback (atom {:behind> '()
+                             ;; :current nil
+                             :ahead< '()}))
 
-(def *on-event->tutor (rum/derived-atom [*tutors] ::derive-on-event->tutor
-                              (fn [tutors]
-                                (->> tutors (into (hash-map) (map (fn [tutor] [(::on-event tutor) tutor])))))))
-
+;; == create tutors ==
 (defonce *left-view->state-fn
-  (rum/derived-atom [*tutors] ::*derive-left-tutors
-    (fn [tutors]
-      (let [tutored-views (set (map ::view tutors))]
+  ;; TODO switch to lazy-derived-atom
+  (rum/derived-atom [*tutors-playback] ::*derive-left-tutors
+    (fn [{:keys [ahead<]}]
+      (let [tutored-views (set (map ::view ahead<))]
         (->> view->state-fn
              (into {} (remove (comp tutored-views key))))))))
 
@@ -544,74 +541,74 @@
                                         ::view view))))
                         (filter some?))))))
 
-(defn maybe-tutor! [event]
+(defn maybe-create-tutor! [event]
   (when-let [tutors (not-empty (doall (event->tutors event)))]
     (let [distinct-on-event-tutors (-> tutors
                                        (->> (group-by ::on-event)
                                             (map (fn [[_ [first-tutor]]] first-tutor))))]
-      (swap! *tutors into distinct-on-event-tutors))))
-
+      (swap! *tutors-playback update :ahead< (fn [ahead<] (->> (concat ahead< distinct-on-event-tutors)
+                                                               (sort-by (comp hg/creation-time ::on-event) <)))))))
 
 (add-watch hga-playback/*just-left< ::derive-event->tutor
            (fn [_ _ _ just-left<]
              (doall
               (doseq [event just-left<]
-                (maybe-tutor! event)))
+                (maybe-create-tutor! event)))
 
              (when (empty? @*left-view->state-fn)
-               (l :removing-watch)
+               (l [:tutors-created :removing-watch])
                (remove-watch hga-playback/*just-left< ::derive-event->tutor))))
+;; ==================
 
-(defonce *seen-events (atom #{}))
-(defonce *hidden-events
-  (rum/derived-atom [*tutors *seen-events] ::derive-hidden-events
-    (fn [tutors seen-events]
-      (set/difference (set (map ::on-event tutors))
-                      seen-events))))
 
+;; == sync tutorns with playback ==
 (add-watch hga-state/*just-played< ::sync-tutors-with-just-played
            (fn [_ _ _ just-played<]
-             (when-let [hidden-events (not-empty @*hidden-events)]
-               (when-let [to-show-events (not-empty (set/intersection hidden-events (set just-played<)))]
+             (when-let [ahead< (not-empty (:ahead< @*tutors-playback))]
+               (let [{:keys [behind> current]} @*tutors-playback
+                     [to-behind> new-current new-ahead<]
+                     (reduce (fn [[to-behind> current ahead< :as acc] played-evt]
+                               (if (hash= (::on-event (first ahead<)) played-evt)
+                                 [(cond-> to-behind>
+                                    current (conj current))
+                                  (first ahead<)
+                                  (rest ahead<)]
+                                 acc))
+                             ['() current ahead<]
+                             just-played<)]
 
-                 ;; trigger on-play
-                 (let [on-event->tutor @*on-event->tutor]
-                   (doseq [to-show-event to-show-events]
-                     (when-let [to-show-tutor (get on-event->tutor to-show-event)]
-                       (when-let [on-play (::on-play to-show-tutor)]
-                         (on-play)))))
+                 (when (not (hash= current new-current))
+                   (doseq [played-tutors (conj to-behind> new-current)]
+                     (when-let [on-play (::on-play played-tutors)]
+                       (on-play)))
 
-                 (swap! *seen-events set/union to-show-events)))))
+                   (reset! *tutors-playback {:behind> (concat to-behind> behind>)
+                                             :current new-current
+                                             :ahead<  new-ahead<}))))))
 
 (add-watch hga-state/*just-rewinded> ::sync-tutors-with-just-played
            (fn [_ _ _ just-rewinded>]
-             (when-let [seen-events (not-empty @*seen-events)]
-               (when-let [to-hide-events (not-empty (set/intersection seen-events (set just-rewinded>)))]
+             (when-let [current (:current @*tutors-playback)]
+               (let [{:keys [behind> ahead<]} @*tutors-playback
+                     [new-behind> new-current to-ahead<]
+                     (reduce (fn [[seen>-acc current to-ahead> :as acc] rewinded-evt]
+                               (if (hash= (::on-event current) rewinded-evt)
+                                 [(rest seen>-acc) (first seen>-acc) (conj to-ahead> current)]
+                                 acc))
+                             [behind> current '()]
+                             just-rewinded>)]
+                 (when (not (hash= current new-current))
+                   (doseq [to-ahead-tutor to-ahead<]
+                     (when-let [on-rewind (::on-rewind to-ahead-tutor)]
+                       (on-rewind)))
 
-                 ;; trigger on-rewind
-                 (let [on-event->tutor @*on-event->tutor]
-                   (doseq [to-hide-event to-hide-events]
-                     (when-let [to-hide-tutor (get on-event->tutor to-hide-event)]
-                       (when-let [on-rewind (::on-rewind to-hide-tutor)]
-                         (on-rewind)))))
-
-                 (swap! *seen-events set/difference to-hide-events)))))
-
-(defonce *seen-latest-event
-  (rum/derived-atom [*seen-events] ::derive-only-one-seen-event
-    (fn [seen-events]
-      (->> seen-events
-           (sort-by ->y >)
-           (first)))))
-
-(defonce *seen-latest-tutor
-  (rum/derived-atom [*seen-latest-event *tutors] ::derive-only-one-tutor-to-show
-    (fn [seen-latest-event tutors]
-      (->> tutors (some (fn [{::keys [on-event] :as tutor}]
-                          (when (= (hash on-event) (hash seen-latest-event))
-                            tutor)))))))
+                   (reset! *tutors-playback {:behind> new-behind>
+                                             :current new-current
+                                             :ahead<  (concat to-ahead< ahead<)}))))))
+;; ===============================
 
 
+(defn scroll-to-next-tutorial! [])
 
 (rum/defc tutor-view < rum/static rum/reactive
   {:key-fn (fn [{::keys [y]}] y)}
@@ -624,6 +621,6 @@
 (rum/defc view < rum/reactive
   []
   [:div#tutorial
-   (when-let [seen-latest-tutor (rum/react *seen-latest-tutor)]
+   (when-let [current-tutor (:current (rum/react *tutors-playback))]
      (hga-smooth-render/view
-      (tutor-view seen-latest-tutor)))])
+      (tutor-view current-tutor)))])
