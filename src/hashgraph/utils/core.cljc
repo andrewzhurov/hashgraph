@@ -1,6 +1,6 @@
 (ns hashgraph.utils.core
   #?(:cljs (:require-macros [hashgraph.utils.core :refer [l]]))
-  (:require [clojure.test :refer [deftest testing is are]]
+  (:require [clojure.test :refer [deftest testing is are run-tests]]
             [clojure.walk]
             [taoensso.tufte :as tufte]
             [rum.core :as rum]
@@ -506,7 +506,7 @@
                                                           (.then (fn [] (apply f args) (resolve true))))))))))))
 
 #?(:cljs
-   (deftype LazyDerivedAtom [^:mutable state meta validator watches this-key refs deriving-f]
+   (deftype LazyDerivedAtom [^:mutable state ^:mutable args meta validator watches this-key refs deriving-f]
      Object
      (equiv [this other]
        (-equiv this other))
@@ -519,7 +519,13 @@
      IDeref
      (-deref [o]
        (when (empty? watches)
-         (set! state (apply deriving-f (map deref refs))))
+         (let [new-args (map deref refs)]
+           (when (not= new-args args)
+             (let [old-state state
+                   new-state (apply deriving-f new-args)]
+               (set! args new-args)
+               (set! state new-state)
+               (-notify-watches o old-state new-state)))))
        state)
 
      IMeta
@@ -527,24 +533,23 @@
 
      IWatchable
      (-notify-watches [this oldval newval]
-       #_(l [:on-notify-watces this-key this oldval newval])
        (doseq [[key f] watches]
          (f key this oldval newval)))
      (-add-watch [this key f]
-       #_(l [:on-add-watch this-key this key f])
        (when (empty? watches)
-         (let [recalc! (async-sequential #(let [oldval state
-                                                newval (apply deriving-f (map deref refs))]
-                                            (set! state newval)
-                                            (-notify-watches this oldval newval)))]
+         (let [recalc!
+               #_(async-sequential)
+               #(let [old-state state
+                      new-args  (map deref refs)
+                      new-state (apply deriving-f new-args)]
+                  (set! args new-args)
+                  (set! state new-state)
+                  (-notify-watches this old-state new-state))]
            (doseq [ref refs]
              (add-watch ref this-key recalc!))
-           (set! (.-watches this) (assoc (.-watches this) key f))
-           ;; recalc?
-           ))
+           (set! (.-watches this) (assoc (.-watches this) key f))))
        this)
      (-remove-watch [this key]
-       #_(l [:on-remove-watch this-key this key])
        (let [new-watches (dissoc watches key)]
          (when (empty? new-watches)
            (doseq [ref refs]
@@ -556,7 +561,84 @@
      (-hash [this] (goog/getUid this))))
 
 #?(:cljs
-   (defn lazy-derived-atom [refs key f] (LazyDerivedAtom. nil nil nil nil key refs f)))
+   (defn lazy-derived-atom [refs key f] (LazyDerivedAtom. nil nil nil nil nil key refs f)))
+
+#?(:cljs
+   (deftest lazy-derived-atom-test
+     (testing "won't eval on create, will on deref, won't on subsequent deref"
+       (let [*counter (atom 0)
+             *lda     (lazy-derived-atom [] ::lda
+                                         (fn [] (swap! *counter inc)))]
+
+         (is (zero? @*counter))
+         (is (= 1 @*lda))
+         (is (= 1 @*counter))
+         (is (= 1 @*lda))
+         (is (= 1 @*counter))))
+
+     (let [lda->results-init {::lda-a  []
+                              ::lda-ab []}
+           *lda->results (atom lda->results-init)
+           *counter (atom 0)
+           *lda-a   (lazy-derived-atom [*counter] ::lda-a
+                                       (fn [counter]
+                                         (swap! *lda->results update ::lda-a conj counter)
+                                         counter))
+           *lda-ab  (lazy-derived-atom [*lda-a] ::lda-ab
+                                       (fn [lda-a]
+                                         (swap! *lda->results update ::lda-ab conj lda-a)
+                                         lda-a))]
+       (testing "won't eval on create"
+         (is (= @*lda->results lda->results-init)))
+
+       (testing "won't eval on refs change, if not watched"
+         (is (= (swap! *counter inc) 1))
+         (is (= @*lda->results lda->results-init)))
+
+       (testing "will eval on deref, a dependent lazy atom does'n get evaled"
+         (is (= @*lda-a 1))
+         (is (= @*lda->results {::lda-a  [1]
+                                ::lda-ab []})))
+
+       (testing "won't re-eval when args don't change"
+         (is (= @*lda-ab 1))
+         (is (= @*lda->results {::lda-a  [1]
+                                ::lda-ab [1]})))
+
+       (testing "stays lazy even when been derefed"
+         (is (= (swap! *counter inc) 2))
+         (is (= @*lda->results {::lda-a  [1]
+                                ::lda-ab [1]})))
+
+       (testing "will eagerly re-derive if watched"
+         (add-watch *lda-a ::lda-a-watch (fn []))
+         (is (= (swap! *counter inc) 3))
+         (is (= @*lda->results {::lda-a  [1 3]
+                                ::lda-ab [1]})))
+
+       (testing "won't unneceserraly reeval on deref from dependent"
+         (is (= @*lda-ab 3))
+         (is (= @*lda->results {::lda-a  [1 3]
+                                ::lda-ab [1 3]})))
+
+       (remove-watch *lda-a ::lda-a-watch)
+
+       (testing "will eagerly re-derive if watched, from bottom"
+         (add-watch *lda-ab ::lda-ab-watch (fn []))
+         (is (= (swap! *counter inc) 4))
+         (is (= @*lda->results {::lda-a  [1 3 4]
+                                ::lda-ab [1 3 4]}))
+         (remove-watch *lda-ab ::lda-ab-watch))
+
+       (testing "won't eagerly re-derive if not watched (watches been removed)"
+         (is (= (swap! *counter inc) 5))
+         (is (= @*lda->results {::lda-a  [1 3 4]
+                                ::lda-ab [1 3 4]})))
+
+       (testing "and on deref does eval, from bottom"
+         (is (= @*lda-ab 5))
+         (is (= @*lda->results {::lda-a  [1 3 4 5]
+                                ::lda-ab [1 3 4 5]}))))))
 
 #?(:cljs
    (defn atomic? [obj] (or (identical? (type obj) cljs.core/Atom)
