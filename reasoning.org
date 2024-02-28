@@ -217,6 +217,13 @@ Still reproduces?
 ** TODO stake change _from_ _to_ may not be intuitive
 ** TODO fix damm slow custom transitions on mobile
 Somewhat fixed.
+** TODO fix highlight of contained in inspected tutor inspectables
+Maybe derive flat representation only for view, and keep originally inspected data as is.
+** TODO ensure tutors are on-screen in horizontal mode
+Can be done by deriving on-screen-y position on tutor mount, adjusting it to be in-view + showing a notch to point to the on-event position.
+** TODO Problem: user may inspect some stuff and move on
+Leaving the viz dimmed.
+*** Solution: perhaps dim only on peek & highlight on inspect
 * More
 ** TODO introduce members
 ** TODO perhaps show db
@@ -234,6 +241,9 @@ Whereas we need to clarify that it's done based on the hashgraph a member has.
 ** TODO explain no leaders
 ** TODO explain spin up private
 ** TODO explain or use public Heder, Consensus as a Sevrice
+** TODO dynamic poor connectivity
+** DONE perhaps Shift+click to add to inspected, plain click to set inspected
+** TODO stop auto-scroll on manual scroll
 
 * objectives
 ** understand the algo to see how it can be applied in NG
