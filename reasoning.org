@@ -224,6 +224,9 @@ Can be done by deriving on-screen-y position on tutor mount, adjusting it to be 
 ** TODO Problem: user may inspect some stuff and move on
 Leaving the viz dimmed.
 *** Solution: perhaps dim only on peek & highlight on inspect
+** TODO Problem: dragging scrollbar results in jittery scroll
+*** Solution: Perhaps just switch to a custom/third-party scroll/scrollbar implementation.
+Also will be easier to solve to auto-playback stop by detecting custom scroll from the user-issued one.
 * More
 ** TODO introduce members
 ** TODO perhaps show db
