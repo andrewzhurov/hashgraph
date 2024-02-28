@@ -438,7 +438,7 @@
     [:div#viz
      (hga-members/view)
      [:svg#render {(if hga-view/view-mode-horizontal? :width :height) (hga-view/evt->viz-height (-> played-evt-infos> first :event-info/event))
-                   (if hga-view/view-mode-horizontal? :height :width) hga-view/viz-size}
+                   (if hga-view/view-mode-horizontal? :height :width) hga-view/viz-x-span}
       [:g.events-view
        (for [evt-info rewinded-evt-infos>]
          (event-view evt-info))
@@ -480,7 +480,7 @@
                                                                            "behavior" "smooth")
                                                                    (js-obj scroll-coord px))))))
        (reset! hga-state/*viz-scroll! (fn [viz-px & {:keys [smooth?]}]
-                                        (let [px (+ viz-px hga-view/window-size)]
+                                        (let [px (+ viz-px hga-view/window-y-span)]
                                           #_(set! (.-scrollTop dom-node) px)
                                           (.scroll dom-node (if smooth?
                                                               (js-obj scroll-coord px
@@ -491,7 +491,7 @@
                           (hga-utils/once-per-render
                            (fn [e]
                              (reset! hga-state/*viz-scroll (- (-> e (.-target) (goog.object/get scroll-attr))
-                                                              hga-view/window-size)))))
+                                                              hga-view/window-y-span)))))
        (.focus dom-node
                ;; focusVisible works only in Firefox atm https://developer.mozilla.org/en-US/docs/Web/API/HTMLElement/focus#browser_compatibility
                ;; overriding :outline manually in styles

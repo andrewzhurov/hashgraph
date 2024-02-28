@@ -515,7 +515,7 @@
    (fn [event]
      (when (= 1 (count @*left-view->state-fn))
        (let [last-on-event-creation-time (->> @*tutors-playback :left< last ::on-event hg/creation-time)]
-         (when (> (hg/creation-time event) (-> last-on-event-creation-time (+ hga-view/window-size)))
+         (when (> (hg/creation-time event) (-> last-on-event-creation-time (+ hga-view/window-y-span)))
            {::on-event event
             ::y        (->y event)
             ::args     []}))))

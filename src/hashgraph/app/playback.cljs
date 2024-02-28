@@ -205,7 +205,7 @@
     (@hga-state/*viz-scroll! evt-viz-scroll-pos :smooth? true)))
 
 (defn rewind-all! []
-  (@hga-state/*viz-scroll! (- hga-view/window-size) :smooth? true))
+  (@hga-state/*viz-scroll! (- hga-view/window-y-span) :smooth? true))
 
 (defn rewind-once! []
   (if-let [prev-evt (second (reverse @*played<))]

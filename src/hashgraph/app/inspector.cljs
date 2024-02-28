@@ -868,7 +868,7 @@
       (do (js/console.warn "m-type order is unset for" m-type)
           100))))
 
-(def bin-size (/ hga-view/window-size (count m-types)))
+(def bin-size (/ hga-view/window-y-span (count m-types)))
 
 (def bins-styles
   [[:.bins-view

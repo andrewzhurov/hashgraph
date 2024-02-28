@@ -28,14 +28,16 @@
 (def window-height js/window.innerHeight)
 (def window-width js/window.innerWidth)
 (def view-mode-horizontal? (> window-width window-height))
-(def window-size (if view-mode-horizontal? window-width window-height))
+(def window-y-span (if view-mode-horizontal? window-width window-height))
+(def window-x-span (if view-mode-horizontal? window-height window-width))
 
-(def viz-size (if view-mode-horizontal?
+(def viz-x-span (if view-mode-horizontal?
                 (/ window-height 3)
-                (-> (/ window-width 3) (* 2))))
-(def viz-margin-x (-> window-size (- viz-size) (/ 2)))
+                (min (-> window-width (* (/ 2 3)))
+                     (-> window-height (* (/ 2 5))))))
+(def viz-margin-x (-> window-x-span (- viz-x-span) (/ 2)))
 
-(def hgs-size (/ viz-size (count hg-members/names)))
+(def hgs-size (/ viz-x-span (count hg-members/names)))
 (def evt-s        (-> hgs-size (/ 3) ceil-even))
 (def hgs-padding  (-> hgs-size (- evt-s) (/ 2)))
 
@@ -90,7 +92,7 @@
                           (+ tutorial-margin))
                       evt-s #_(+ sp-padding evt-s)))
 (def after-viz-buffer-size (* 35 evt-offset))
-(def playback-size (ceil (-> window-size
+(def playback-size (ceil (-> window-y-span
                              (- members-y-end load-area-size))))
 
 (def wit-r (* 2 evt-r))
@@ -143,7 +145,7 @@
   viz-scroll)
 
 (defn ->viz-viewbox-bound-max [viz-scroll]
-  (+ viz-scroll window-size))
+  (+ viz-scroll window-y-span))
 
 (defn ->before-viz-viewbox? [y viz-scroll]
   (< y (->viz-viewbox-bound-min viz-scroll)))
