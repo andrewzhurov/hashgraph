@@ -581,10 +581,10 @@
                              just-played<)]
 
                  (when (not (hash= current new-current))
+                   (hga-inspector/inspected-flush!)
                    (doseq [played-tutors (conj to-behind> new-current)]
                      (when-let [on-play (::on-play played-tutors)]
-                       (on-play))
-                     (hga-inspector/inspected-flush!))
+                       (on-play)))
 
                    (reset! *tutors-playback {:behind> (concat to-behind> behind>)
                                              :current new-current
@@ -602,10 +602,10 @@
                              [behind> current '()]
                              just-rewinded>)]
                  (when (not (hash= current new-current))
+                   (hga-inspector/inspected-flush!)
                    (doseq [to-ahead-tutor to-ahead<]
                      (when-let [on-rewind (::on-rewind to-ahead-tutor)]
                        (on-rewind)))
-                   (hga-inspector/inspected-flush!)
 
                    (reset! *tutors-playback {:behind> new-behind>
                                              :current new-current
