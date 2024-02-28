@@ -115,13 +115,14 @@
 (def max-buffered-size 200)
 (def min-buffered-size 20)
 (defn buffer-playback-left-events-on-exhaust! []
-  (add-watch *left< ::buffer-playback-left-events-on-exhaust
-             (fn [_ _ _ left<]
-               (when (< (count left<) min-buffered-size)
-                 (let [buffered-size    (count left<)
-                       playback-events< (->playback-events< @*playback)
-                       new-just-left<   (hga-events/issue playback-events< left< (fn [new-events<] (>= (+ (count new-events<) buffered-size) min-buffered-size)))]
-                   (reset! *just-left< new-just-left<))))))
+  (add-watch hga-state/*just-played< ::buffer-playback-left-events-on-exhaust
+             (fn [_ _ _ _]
+               (let [left< @*left<]
+                 (when (< (count left<) min-buffered-size)
+                   (let [buffered-size    (count left<)
+                         playback-events< (->playback-events< @*playback)
+                         new-just-left<   (hga-events/issue playback-events< left< (fn [new-events< issued-till-y] (>= (+ (count new-events<) buffered-size) min-buffered-size)))]
+                     (reset! *just-left< new-just-left<)))))))
 
 (def issue-on-iddle-for-ms (/ 16.6 3))
 (defn buffer-playback-left-events-async-on-idle! []
