@@ -293,12 +293,17 @@
                :on-mouse-leave #(if nested?
                                   (inactive-inspectable! path el)
                                   (reset-active-inspectables!))
-               :on-click       #(when-not nested?
-                                  (when (or (not (:debug? opts))
-                                            (and (:debug? opts) (kb-key? peek-key)))
-                                    (.preventDefault %)
-                                    (when-not nested? (.stopPropagation %))
-                                    (toggle-inspect! el))))))))
+               :on-click       #(do (when (or (not (:debug? opts))
+                                              (and (:debug? opts) (kb-key? peek-key)))
+                                      (.preventDefault %)
+                                      (when-not nested? (.stopPropagation %))
+
+                                      ;; TODO support for nested?
+                                      (if (kb-key? enhance-key)
+                                        (toggle-inspect! el)
+                                        (let [inspected? (->in @*inspected-with-peeked el)]
+                                          (inspected-flush!)
+                                          (when-not (l inspected?) (inspect! el)))))))))))
 
 #_#_
 (def inspectable-opts-defaults
