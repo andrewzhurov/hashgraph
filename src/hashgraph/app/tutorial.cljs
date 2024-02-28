@@ -96,7 +96,7 @@
 
 (def styles-horizontal
   [[:#tutorial
-    [:.tutor-wrapper {:bottom    "30px"
+    [:.tutor-wrapper {:bottom    (px 0)
                       :transform "translateX(-50%)"}]]])
 
 (def styles-vertical
