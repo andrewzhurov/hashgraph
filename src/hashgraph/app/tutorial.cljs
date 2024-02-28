@@ -125,11 +125,7 @@
    (rum/defc tutor-event-view < rum/reactive
      [event]
      [:div.tutor
-      "Members create events, such as " (i event "this one") ".\n\n"
-
-      (if hga-view/view-mode-horizontal?
-        "(Ctrl+hover to peek, click to pin ^)"
-        "(tap to highlight)")])
+      "Members create events, such as " (i event "this one") "."])
    (fn [event]
      (when (= 1 (:event/creation-time event))
        {::on-event event
@@ -189,10 +185,15 @@
 
    (rum/defc tutor-witness-view < rum/reactive
      [r1-ws]
-     [:div.tutor
-      "First event of each member in a round is considered to be a witness.\n\n"
+     [:div.tutor.unbound
+      "First event of each member in a round\n"
+      "is considered to be a witness.\n\n"
 
-      "These are " (i r1-ws "witnesses of 1st round") "."
+      "These are " (i r1-ws "witnesses of 1st round") ".\n\n"
+
+      (if hga-view/view-mode-horizontal?
+        "(click to inspect ^)"
+        "(tap to highlight ^)")
       #_"This is one interesting twist of voting. Instead of voting on order of each event individually, we can vote on fame of witnesses."])
    (fn [event]
      (when (= (hg/creator event) hg/main-creator)
@@ -218,7 +219,11 @@
         "An event may see that many members see another event, a so-called 'strongly see'.\n\n"
 
         (i event "This event") " " ss-m1 " " (i m1-evt (str m1 "'s event")) "\n"
-        " and also " ss-m2 " " (i m2-evt (str m2 "'s event")) "."]))
+        " and also " ss-m2 " " (i m2-evt (str m2 "'s event")) "."
+
+        (when hga-view/view-mode-horizontal?
+          "\n\n(Ctrl+hover to peek ^)")
+        ]))
    (fn [event]
      (when (-> event meta ::to-tutor (= ::strongly-seeing))
        (let [cr                (hg/->concluded-round event)
