@@ -188,5 +188,3 @@
       (is (js-map/js-map? ma))
       (is (js-map/js-map? mab))
       (is (= (js-map/get mab :c) :d)))))
-
-(run-tests)
