@@ -583,7 +583,8 @@
                  (when (not (hash= current new-current))
                    (doseq [played-tutors (conj to-behind> new-current)]
                      (when-let [on-play (::on-play played-tutors)]
-                       (on-play)))
+                       (on-play))
+                     (hga-inspector/inspected-flush!))
 
                    (reset! *tutors-playback {:behind> (concat to-behind> behind>)
                                              :current new-current
@@ -604,6 +605,7 @@
                    (doseq [to-ahead-tutor to-ahead<]
                      (when-let [on-rewind (::on-rewind to-ahead-tutor)]
                        (on-rewind)))
+                   (hga-inspector/inspected-flush!)
 
                    (reset! *tutors-playback {:behind> new-behind>
                                              :current new-current
