@@ -902,7 +902,7 @@
                               :received-event/event                 e-r
                               :received-event/r                     (:concluded-round/r concluded-round)))))
 
-           (sort-by :received-event/received-time)
+           (sort-by :received-event/received-time) ;; TODO Add tie-breaking by XOR of witness signatures, as in spec https://hyp.is/_XoSCtShEe6VTx9ByOxu1w/www.swirlds.com/downloads/SWIRLDS-TR-2016-01.pdf
 
            ;; no value in building a chain of received events
            ;; TODO just store ordered received events on concluded-round
