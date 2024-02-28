@@ -111,7 +111,7 @@
         left<    @*left<]
     (concat (->playback-events< playback) left<)))
 
-;; Ensures there are always some events left to playback by issuing new ones
+;; Ensures there are always some events left to playback by buffering more
 (def max-buffered-size 200)
 (def min-buffered-size 20)
 (defn buffer-playback-left-events-on-exhaust! []
