@@ -143,10 +143,12 @@
       [:.inspectable.accented {:scale  1
                                :filter :none}]]
      [(gs/& :.analysis (gs/not :.inspected) (gs/not :.nested)) {:opacity 0.33}]]
-    [:.refs
+    [:.refs {:opacity 0.20}
+     [:.ref {:stroke       :black
+             :stroke-width (px 2)}]
      [:.inspectable
       [:&.accented {:scale 1
-                    :filter "drop-shadow(0px 0px 1px rgb(0 0 0 / 0.2))"}]]]]
+                    :filter "drop-shadow(0px 0px 1px rgb(0 0 0 / 0.6))"}]]]]
 
    [:.event-info {;; :filter "drop-shadow(0px 0px 2px rgb(0 0 0 / 0.4))"
                   }
@@ -313,23 +315,19 @@
            [:g.refs
             (when sp-view-state
               [:g.ref.sp (inspectable [event (hg/self-parent event)] {:passive? true :->inspected? ->inspected? :->accented? ->accented?})
-               [:line {hga-view/x1   x
-                       hga-view/y1   y
-                       hga-view/x2   (js-map/get sp-view-state :x)
-                       hga-view/y2   (js-map/get sp-view-state :y)
-                       :stroke       :lightgray
-                       :stroke-width "2px"
-                       :style        {:opacity ref-opacity}}]])
+               [:line {hga-view/x1 x
+                       hga-view/y1 y
+                       hga-view/x2 (js-map/get sp-view-state :x)
+                       hga-view/y2 (js-map/get sp-view-state :y)
+                       :style      {:opacity ref-opacity}}]])
 
             (when op-view-state
               [:g.ref.op (inspectable [event (hg/other-parent event)] {:passive? true :->inspected? ->inspected? :->accented? ->accented?})
-               [:line {hga-view/x1   x
-                       hga-view/y1   y
-                       hga-view/x2   (js-map/get op-view-state :x)
-                       hga-view/y2   (js-map/get op-view-state :y)
-                       :stroke       :lightgray
-                       :stroke-width "2px"
-                       :style        {:opacity ref-opacity}}]])]))
+               [:line {hga-view/x1 x
+                       hga-view/y1 y
+                       hga-view/x2 (js-map/get op-view-state :x)
+                       hga-view/y2 (js-map/get op-view-state :y)
+                       :style      {:opacity ref-opacity}}]])]))
 
        [:g.event-info {:width  (* hga-view/wit-r 2)
                        :height (* hga-view/wit-r 2)
