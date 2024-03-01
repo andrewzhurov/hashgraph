@@ -9,43 +9,10 @@
    [hashgraph.utils.core :refer [log!] :refer-macros [l defn*] :as utils]
    [taoensso.timbre :refer-macros [spy]]
    [taoensso.tufte :as tufte :refer [defnp p profiled profile]]))
-#_
-(def event->pending-invitor-event
-  (memoize
-   (fn [event]
-     (let [pending-invitor-event
-           (-> event
-               (hg/parents)
-               (->> (some event->pending-invitor-event))) ;; bug. perhaps issue on stake-map change
-           received?
-           (fn [evt pending-evt]
-             (some (fn [re] (= (:received-event/event re) pending-evt)) (take-while some? (iterate :received-event/prev-received-event (hg/last-received-event evt)))))]
-       (or (and pending-invitor-event
-                (not (received? event pending-invitor-event))
-                pending-invitor-event)
-           (and (let [member-invites-in-this-round (hg/event->most-weigted-member event)]
-                  (= member-invites-in-this-round (:event/creator event)))
-                event))))))
 
-#_
-(def invitor-event->invitee
-  (memoize
-   (fn [invitor-event]
-     (let [invitee-idx      (-> invitor-event
-                                hg/event->present-members
-                                (->> (map :member/idx)
-                                     (apply max))
-                                (inc))
-           to-invite-member (nth hg-members/people invitee-idx nil)]
-       (:member/name to-invite-member)))))
-
-#_
-(def event->invitee
-  (memoize
-   (fn [event]
-     (let [invitor-event (-> event event->pending-invitor-event)]
-       (and (= invitor-event event)
-            (invitor-event->invitee invitor-event))))))
+(def names-without-name
+  (fn [names name]
+    (vec (disj (set names) name))))
 
 (defn make-share-stake-tx [from to ratio]
   (hash-map :tx/fn-id :share-stake
@@ -53,20 +20,10 @@
                         :share-stake/to    to
                         :share-stake/ratio ratio}]))
 
-#_
-(defn maybe-assoc-invitee [evt]
-  (let [invitee (event->invitee evt)]
-    (cond-> evt
-      invitee (assoc :event/tx (make-share-stake-tx (:event/creator evt) invitee 50)))))
-
-(def names-without-name
-  (fn [names name]
-    (vec (disj (set names) name))))
-
 (def share-stake-tx-delay    60)
 (def share-stake-tx-n-events 30)
-(defn with-occasional-share-stake-tx [evt events<]
-  (let [events-count (- (count events<) share-stake-tx-delay)
+(defn with-occasional-share-stake-tx [evt events>]
+  (let [events-count (- (count events>) share-stake-tx-delay)
         first-tx?    (zero? events-count)]
     (cond-> evt
       (and (not (neg? events-count))
@@ -83,8 +40,8 @@
 (def inc-counter-tx-delay    25)
 (def inc-counter-tx-n-events 24)
 (def *first-inc-counter-tx-issued? (volatile! false))
-(defn with-occasional-inc-counter-tx [evt events<]
-  (let [events-count (- (count events<) inc-counter-tx-delay)]
+(defn with-occasional-inc-counter-tx [evt events>]
+  (let [events-count (- (count events>) inc-counter-tx-delay)]
     (cond-> evt
       (and (not (neg? events-count))
            (if-not true #_ @*first-inc-counter-tx-issued? ;; nah, make the joke random, gets old otherwise
@@ -93,12 +50,14 @@
              (zero? (mod events-count inc-counter-tx-n-events))))
       (assoc :event/tx {:tx/fn-id :inc-counter}))))
 
+;; TODO Try with :only-last
 (defn* ^:memoizing events>->c->hg [[event & rest-events>]]
   (if (nil? event)
     (hash-map)
     (let [prev-c->hgs (events>->c->hg rest-events>)]
       (assoc prev-c->hgs (:event/creator event) event))))
 
+#_
 (defn c->hg->events> [c->hg]
   (let [tips        (vals c->hg)
         events> (-> tips
