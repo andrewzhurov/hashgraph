@@ -615,8 +615,9 @@
                                              :ahead<  (concat to-ahead< ahead<)}))))))
 ;; ===============================
 
-
-(defn scroll-to-next-tutorial! [])
+(defn scroll-to-next-tutorial! []
+  (when-let [on-event (some->> @*tutors-playback :ahead< first ::on-event)]
+    (hga-playback/viz-scroll-to-event! on-event)))
 
 (rum/defc tutor-view < rum/static rum/reactive
   {:key-fn (fn [{::keys [y]}] y)}

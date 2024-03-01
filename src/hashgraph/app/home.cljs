@@ -5,7 +5,8 @@
             [garden.selectors :as gs]
             [hashgraph.app.icons :as hga-icons]
             [hashgraph.app.view :as hga-view]
-            [hashgraph.app.styles :refer [reg-styles!]]))
+            [hashgraph.app.styles :refer [reg-styles!]]
+            [hashgraph.app.tutorial :as hga-tutorial]))
 
 (def desc-size "14px")
 (def delim-size "18px")
@@ -129,8 +130,9 @@
    [:div.see-for-yourself
     [:div.scary "Scary? Oh, sure!"]
     [:div.see "See for yourself"]
-    (if hga-view/view-mode-horizontal?
-      (hga-icons/icon :solid :angles-right :size :2x :color :lightgray)
-      (hga-icons/icon :solid :angles-down :size :2x :color :lightgray))]
+    [:div {:on-click hga-tutorial/scroll-to-next-tutorial!}
+     (if hga-view/view-mode-horizontal?
+       (hga-icons/icon :solid :angles-right :size :2x :color :lightgray)
+       (hga-icons/icon :solid :angles-down :size :2x :color :lightgray))]]
 
    [:div.repo-link [:a {:href hga-view/repo-link :target "_blank"} (hga-icons/icon :brands :github :size :2x)]]])
