@@ -73,9 +73,10 @@
 ;; we need to make sure that events have distinct creation times (as int, because scroll position is an int).
 ;; To achieve that we can track taken creation times, and ensure that newly issued creation time is distinct.
 (defonce *taken-creation-times (atom #{}))
-(defonce slowdown-period-ms (if hga-view/view-mode-horizontal? 2200 1000))
+(defonce slowdown-period-ms (if hga-view/view-mode-horizontal? 2200 1000)) ;; better be relative to the size of playback area
 (defonce *in-slowdown? (atom true))
-(defn ->next-creation-time [prev-creation-time]
+(defn ->next-creation-time [prev-creation-time & {:keys [dry-run?]
+                                                  :or {dry-run? false}}]
   (let [next-creation-time-candidate
         (-> prev-creation-time
             (+ hga-view/evt-offset)
@@ -85,81 +86,98 @@
                    (/ 15)))
             ;; add small random offset, to ensure creation-time is distinct
             ;; would be enough to give [0; members-count]
-            (+ (rand-int (* (count hg-members/names) 2))) ;; * 2 to give more leeway
+            (cond->
+                (not dry-run?) (+ (rand-int (* (count hg-members/names) 2)))) ;; * 2 to give more leeway
             ceil)]
-    (if (not (contains? @*taken-creation-times next-creation-time-candidate))
-      (do (when (and @*in-slowdown?
-                     (> next-creation-time-candidate slowdown-period-ms))
-            (reset! *in-slowdown? false))
-          (swap! *taken-creation-times conj next-creation-time-candidate)
-          next-creation-time-candidate)
-      ;; try again, with a different random offset
-      (->next-creation-time prev-creation-time))))
+    (if dry-run?
+      next-creation-time-candidate
+      (if (not (contains? @*taken-creation-times next-creation-time-candidate))
+        (do (when (and @*in-slowdown?
+                       (> next-creation-time-candidate slowdown-period-ms))
+              (reset! *in-slowdown? false))
+            (swap! *taken-creation-times conj next-creation-time-candidate)
+            next-creation-time-candidate)
+        ;; try again, with a different random offset
+        (->next-creation-time prev-creation-time)))))
 
-(defn* issue* [playback-events< left< ->enough? new-events<]
-  (let [events<              (concat playback-events< left< new-events<)
-        events>              (reverse events<)
-        creator->hg          (-> events> events>->c->hg)
-        main-tip             (-> events> hg/events>->main-tip)
-        cr                   (-> main-tip hg/->concluded-round)
-        stake-map            (-> cr hg/concluded-round->stake-map)
-        current-member-names (set (keys stake-map))
-        sender               (rand-nth (vec current-member-names))
-        ?sender-hg           (get creator->hg sender)
+(defn ->chat [{:chatter/keys [before> prev-t t after>] :as chatter} sender]
+  (let [all>          (concat after> before>)
+        creator->hg   (-> all> events>->c->hg)
+        main-tip      (-> all> hg/events>->main-tip)
+        cr            (-> main-tip hg/->concluded-round)
+        stake-map     (-> cr hg/concluded-round->stake-map)
+        stake-holders (set (keys stake-map))
+        ?sender-hg    (get creator->hg sender)
 
-        new-events<
+        new-after>*
         (if (nil? ?sender-hg)
-          (let [new-sender-hg (hash-map :event/creator sender
-                                        :event/creation-time
-                                        (if-let [highest-hg-creation-time
-                                                 (some-> creator->hg
-                                                         vals
-                                                         (->> (map :event/creation-time)
-                                                              (sort))
-                                                         last)]
-                                          (->next-creation-time highest-hg-creation-time)
-                                          0))]
-            (conj new-events< new-sender-hg))
+          (let [new-sender-hg (hash-map :event/creator       sender
+                                        :event/creation-time (->next-creation-time t))]
+            (conj after> new-sender-hg))
 
-          (let [sender-hg                    ?sender-hg
-                receivers                    (-> current-member-names
-                                                 (disj sender)
-                                                 (->> (remove (fn [creator]
-                                                                (when-let [creator-hg (creator->hg creator)]
-                                                                  (hg/ancestor? creator-hg sender-hg)))))) ;; gets increasingly more costly
-                reachable-receivers          (filter (fn [receiver]
-                                                       (let [reaching? #(zero? (rand-int 8))]
-                                                         (and (or (not (contains? hg-members/hardly-reachable-member-names receiver))
-                                                                  (reaching?))
-                                                              (or (not (contains? hg-members/hardly-reachable-member-names sender))
-                                                                  (reaching?))
-                                                              receiver)))
-                                                     receivers)
-                selected-reachable-receivers (utils/random-nths (max 1 (ceil (/ (count receivers) 3))) reachable-receivers)]
-            (->> selected-reachable-receivers
-                 (reduce (fn [new-events-acc receiver]
-                           (conj new-events-acc
+          (let [sender-hg ?sender-hg
+                receivers (-> stake-holders
+                              (disj sender)
+                              (->> (remove (fn [creator]
+                                             (when-let [creator-hg (creator->hg creator)]
+                                               (hg/ancestor? creator-hg sender-hg)))))) ;; gets increasingly more costly
+
+                ;; TODO add connectivity
+                selected-receivers (utils/random-nths (max 1 (ceil (/ (count receivers) 3))) receivers)]
+
+            (->> selected-receivers
+                 (reduce (fn [after>-acc receiver]
+                           (conj after>-acc
                                  (let [?receiver-hg (creator->hg receiver)
-                                       all< (concat playback-events< left< new-events-acc)
+                                       all>         (concat after>-acc before>)
                                        new-receiver-hg
                                        (cond-> (hash-map :event/creator      receiver
                                                          :event/other-parent sender-hg
                                                          :event/creation-time
                                                          (-> (if @*in-slowdown?
-                                                               (:event/creation-time (first (sort-by :event/creation-time > (concat left< new-events-acc))))
+                                                               (:event/creation-time (first all>))
                                                                (max (:event/creation-time sender-hg)
-                                                                    (:event/creation-time ?receiver-hg)))
+                                                                    (:event/creation-time ?receiver-hg)
+                                                                    t))
                                                              (->next-creation-time)))
                                          ?receiver-hg (assoc :event/self-parent ?receiver-hg)
-                                         :always      (with-occasional-share-stake-tx all<)
-                                         :always      (with-occasional-inc-counter-tx all<))]
+                                         :always      (with-occasional-share-stake-tx all>)
+                                         :always      (with-occasional-inc-counter-tx all>))]
                                    new-receiver-hg)))
-                         new-events<))))
-        new-events-sorted< (sort-by :event/creation-time new-events<)]
-    (if (->enough? new-events<)
-      new-events-sorted<
-      (recur playback-events< left< ->enough? new-events-sorted<))))
+                         after>))))
+        new-after> (sort-by hg/creation-time > new-after>*)]
+    (assoc chatter :chatter/after> new-after>)))
 
-(defn issue [playback-events< left< ->enough?] (issue* playback-events< left< ->enough? []))
+(defn ->chatter [{:chatter/keys [before> t after>] :as chatter}]
+  (let [all>          (concat after> before>)
+        main-tip      (-> all> hg/events>->main-tip)
+        cr            (-> main-tip hg/->concluded-round)
+        stake-map     (-> cr hg/concluded-round->stake-map)
+        stake-holders (set (keys stake-map))
 
-;; perhaps craft an infinite lazy sequence of events (with iterate ?)
+        new-chatter*              (reduce ->chat chatter stake-holders)
+        new-after>                (:chatter/after> new-chatter*)
+        new-t                     (->next-creation-time t :dry-run? true)
+        [new-after> just-before>] (->> new-after> (split-with #(> (hg/creation-time %) new-t)))]
+    (assoc new-chatter*
+           :chatter/t            new-t
+           :chatter/before>      (concat just-before> before>)
+           :chatter/just-before> just-before>
+           :chatter/after>       new-after>)))
+
+(defonce ^:dynamic initial-events< '())
+
+(defn ->events<
+  ([] (reduce (fn [acc initial-evt] (cons initial-evt acc))
+              (->events< #:chatter{:before> (reverse initial-events<)
+                                   :t       (or (some->> initial-events< last hg/creation-time inc)
+                                                0)
+                                   :after>  '()})
+              (reverse initial-events<)))
+  ([prev-chatter]
+   (lazy-seq (let [chatter      (->chatter prev-chatter)
+                   just-before> (:chatter/just-before> chatter)]
+               (reduce (fn [acc evt] (cons evt acc)) (->events< chatter) just-before>)))))
+
+(defonce ^:dynamic events< '())
+

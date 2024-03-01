@@ -23,38 +23,30 @@
 
 ;; Playback state is kept explicitly rather than being a derived view,
 ;; this is to get a performance gain, sacrificing simplicity.
-(defonce *left< (atom (list)))
-(defonce *just-left< (atom (list)))
-(add-watch *just-left< ::update-left-on-just-left
-           (fn [_ _ _ just-left<]
-             (swap! *left< (fn [left<] (-> (concat left< just-left<)
-                                           (->> (sort-by :event/creation-time)))))))
-
-;; Playback is split to four states.
 ;;
-;; *left< is used to buffer more events ahead-of-time.
-;; They are issued and memoized on idle and on exhaus.
-;; On idle issuing allows to buffer events and memoize main algorithm for them for faster playback.
+;; Playback is split to three states:
 ;;
 ;; :behind> is used to store events that are behind the view, as there's no point in rendering them.
-;; They are kept in descending (>) order, so pulling from them to :played< on rewind is fast.
+;;          They are kept in descending (>) order, so pulling from them to :played< on rewind is fast.
 ;;
 ;; :played< stores events that are in-view (rendered), in ascending order.
 ;;
 ;; :rewinded< stores events that been rewinded. They are capped to just few events.
-;; These events are also rendered, in order to display rewinding transition.
-;; Even though rewinded events are rendered, they do not contribute to main algorithm / they are no more present.
+;;            These events are also rendered, in order to display rewinding transition.
+;;            Even though rewinded events are rendered,
+;;            they do not contribute to main algorithm / they are no more present.
+(defonce *left< (atom hga-events/events<))
 (defonce *playback (atom {:behind>   '()   ;; on play we'll read from the first when putting to played V
                           :played<   '()   ;; on play we'll read from the first when putting to behind ^
                           :rewinded< '() ;; on play we'll read from the first when putting to played ^
                           }))
 
+(defonce *behind>   (rum/cursor *playback :behind>))
 (defonce *played<   (rum/cursor *playback :played<))
 (defonce *rewinded> (rum/cursor *playback :rewinded>))
 
-;; As events viz is scrolled forward, more events get "created".
+;; As events viz is scrolled forward, advancing time, more events get "created".
 ;; As events viz is scrolled backwards, time's rewinded.
-
 
 (def sync-playback-with-viz-scroll
   (add-watch hga-state/*viz-scroll ::sync-playback-with-scroll
@@ -99,6 +91,29 @@
                               :played<   new-played<
                               :rewinded< new-rewinded<})))))))
 
+;; Events are crafted as an infinite lazy sequence,
+;; elements are created as it's being read.
+;; Creation may be slow, as it uses main algorithm to determine active members,
+;; as only they send events to each other.
+;;
+;; In order to speed up creation, events-seq gets eagerly resolved when browser's idle,
+;; just few at a time, to keep the browser responsive.
+
+;; Ensures there are always some events left to playback by buffering more
+;; Maybe use IdleDeadline.timeRemaining()
+;; However, in my browser it's not available.. which's strange.
+(def issue-on-iddle-for-ms (/ 16.6 3))
+(defn resolve-more-events-on-idle! [resolved-events-nexts]
+  (js/requestIdleCallback
+   (fn []
+     (let [new-resolved-events-nexts (if (-> (hg/creation-time (first resolved-events-nexts))
+                                             (- (hg/creation-time (first @*left<)))
+                                             (<= hga-view/playback-size))
+                                       (do (js/console.log "on idle buffering more events")
+                                           (drop 5 resolved-events-nexts))
+                                       resolved-events-nexts)]
+       (resolve-more-events-on-idle! new-resolved-events-nexts)))))
+
 
 (defn ->playback-events< [{:keys [behind> played< rewinded<]}]
   (-> behind>
@@ -110,45 +125,6 @@
   (let [playback @*playback
         left<    @*left<]
     (concat (->playback-events< playback) left<)))
-
-;; Ensures there are always some events left to playback by buffering more
-(def max-buffered-size 200)
-(def min-buffered-size 20)
-(defn buffer-playback-left-events-on-exhaust! []
-  (add-watch hga-state/*just-played< ::buffer-playback-left-events-on-exhaust
-             (fn [_ _ _ _]
-               (let [left< @*left<]
-                 (when (< (count left<) min-buffered-size)
-                   (let [buffered-size    (count left<)
-                         playback-events< (->playback-events< @*playback)
-                         new-just-left<   (hga-events/issue playback-events< left< (fn [new-events< issued-till-y] (>= (+ (count new-events<) buffered-size) min-buffered-size)))]
-                     (reset! *just-left< new-just-left<)))))))
-
-(def issue-on-iddle-for-ms (/ 16.6 3))
-(defn buffer-playback-left-events-async-on-idle! []
-  (js/requestIdleCallback
-   (fn []
-     (utils/timing
-      (let [left< @*left<]
-        (when (< (count left<) max-buffered-size)
-          #_(js/console.log "on idle buffering more events")
-          (let [playback-events< (->playback-events< @*playback)
-                new-just-left<   (hga-events/issue playback-events< left<
-                                                   ;; Maybe use IdleDeadline.timeRemaining()
-                                                   ;; However, in my browser it's not available.. which's strange.
-                                                   (fn [new-events<] (> (utils/*->time*) issue-on-iddle-for-ms))
-                                                 #_(constantly true) ;; issue one at a time
-                                                 #_(fn [new-events] (>= (count new-events) 10)))]
-            (reset! *just-left< new-just-left<)))))
-     (buffer-playback-left-events-async-on-idle!))))
-
-(defn buffer-initially! []
-  (let [left< @*left<]
-    (when (< (count left<) min-buffered-size)
-      (let [playback-events< (->playback-events< @*playback)
-            new-just-left<   (hga-events/issue playback-events< left< (fn [new-events<] (> (count new-events<) min-buffered-size)))]
-        (reset! *just-left< new-just-left<)))))
-
 
 (defn pack [events<]
   (let [writer (transit/writer :json)]
