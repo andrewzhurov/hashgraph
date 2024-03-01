@@ -99,10 +99,10 @@
 (def styles-vertical
   [[:#tutorial
     [:.tutor-wrapper {;; :width "100%"
-                      :transform "translateY(-50%)"
-                      :left      "2vw"
-                      :width     "96vw"
-                      :opacity   "0.9"}
+                      :transform "translateY(-100%)"
+                      :left      (px hga-view/tutorial-mobile-x-margin)
+                      :right     (px hga-view/tutorial-mobile-x-margin)
+                      :opacity   1}
      [:.tutor {:max-width "100% !important"
                :width     "100% !important"}]]]])
 

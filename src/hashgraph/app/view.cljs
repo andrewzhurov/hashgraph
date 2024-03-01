@@ -34,8 +34,13 @@
 (def viz-x-span (if view-mode-horizontal?
                 (/ window-height 3)
                 (min (-> window-width (* (/ 2 3)))
-                     (-> window-height (* (/ 2 5))))))
+                     (-> window-height (* (/ 2 6))))))
 (def viz-margin-x (-> window-x-span (- viz-x-span) (/ 2)))
+
+(def tutorial-mobile-x-overflow (min 30
+                                     (/ viz-x-span 10)))
+(def tutorial-mobile-x-margin (-> window-x-span (- viz-x-span) (/ 2) (- tutorial-mobile-x-overflow)))
+(def tutorial-mobile-x-span (-> viz-x-span (+ (* tutorial-mobile-x-margin 2))))
 
 (def hgs-size (/ viz-x-span (count hg-members/names)))
 (def evt-s        (-> hgs-size (/ 3) ceil-even))
@@ -81,7 +86,7 @@
 
 (def members-y-start (if view-mode-horizontal?
                        0
-                       (+ control-margin control-size control-margin member-name-font-size)))
+                       (+ control-margin control-size control-margin)))
 (def members-y-end (+ members-y-start members-height))
 
 
