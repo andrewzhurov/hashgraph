@@ -1105,3 +1105,44 @@ identical?
 ;; It's a field.
 ;; I thought to use it for mory comfy lookup of transitions view-state,
 ;; but since it's a field, transition engine treats it like a prop - no good.
+
+;; Playing around with infinite lazy seq
+(defn ->fib-seq
+  ([] (cons 0 (cons 1 (->fib-seq 0 1))))
+  ([a b] (let [c (+ a b)]
+           (lazy-seq (cons c (->fib-seq b c))))))
+#_#_
+(def fib-seq (->fib-seq))
+(do (def fib-seq-left (drop 10 (or fib-seq-left fib-seq)))
+    (take 10 fib-seq-left))
+
+;; Playing around with infinite lazy seq of mock events
+(defn ->chatter [{:keys [settled-t temps<]
+                  :or {settled-t 0
+                       temps< '()}}]
+  (let [to-temps (repeatedly 3 #(+ (rand-int 3) 1 settled-t))
+        new-temps< (sort < (concat temps< to-temps))]
+    (if-let [new-settled-t (->> new-temps<
+                                (group-by identity)
+                                (sort-by key >)
+                                (some (fn [[t ts]] (when (> (count ts) 3) t))))]
+      (let [[new-settled< new-temps<] (split-with #(not= % new-settled-t) new-temps<)]
+        {:settled-t new-settled-t
+         :settled< new-settled<
+         :temps< new-temps<})
+      (->chatter {:temps< new-temps<}))))
+
+#_
+(do (def next-chatter3 (->chatter (or next-chatter3 {})))
+    next-chatter3)
+
+(defn ->events
+  ([] (->events {}))
+  ([prev-chatter]
+   (lazy-seq (let [next-chatter  (->chatter prev-chatter)
+                   next-settled> (reverse (:settled< next-chatter))]
+               (reduce (fn [acc el] (cons el acc)) (->events next-chatter) next-settled>)))))
+
+#_
+(do (def next-events (drop 10 (or next-events (->events))))
+    (take 10 next-events))
