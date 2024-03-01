@@ -135,6 +135,7 @@
                                      :align-items     :center})]]
 
    [:#viz
+    [:#render {:overflow :visible}]
     [:.inspectable {:transform-box    :fill-box
                     :transform-origin :center
                     :transition (t :scale (/ tt 2) :opacity (/ tt 2))}
