@@ -285,13 +285,9 @@
 
 
 (rum/defc playback-controls-view < rum/reactive
-  {:will-mount   (fn [state]
-                   (doseq [{:keys [shortcut action]} playback-controls]
+  {:will-mount (fn [state]
+                 (doseq [{:keys [shortcut action]} playback-controls]
                      (hga-keyboard/reg-shortcut! shortcut action))
-                   state)
-   :will-unmount (fn [state]
-                   (doseq [{:keys [shortcut]} playback-controls]
-                     (hga-keyboard/unreg-shortcut! shortcut))
                    state)}
   []
   [:div.playback-controls
