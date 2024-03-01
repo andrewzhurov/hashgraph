@@ -25,13 +25,7 @@
     [:.distributed-ledger {:grid-area "distributed-ledger"}]
     [:.virtual-voting {:grid-area "virtual-voting"}]
     [:.hashgraph {:grid-area "hashgraph"}]
-    [:.see-for-yourself {:grid-area       "see-for-yourself"
-                         :display         :flex
-                         :flex-direction  :row
-                         :justify-content :center
-                         :align-items     :center}
-     [:.see {:margin-left (px 3)}]
-     [:svg {:margin-left (px 5)}]]
+    [:.see-for-yourself {:grid-area "see-for-yourself"}]
 
     [:.def.distributed-ledger {:font-size "24px"}]
     [:.def.virtual-voting {:font-size "28px"}]
@@ -82,7 +76,14 @@
                                     ". . ."
                                     ". . ."
                                     ". . ."
-                                    ". . ."]))}]])
+                                    ". . ."]))}
+    [:.see-for-yourself {
+                         :display         :flex
+                         :flex-direction  :row
+                         :justify-content :center
+                         :align-items     :center}
+     [:.see {:margin-left (px 3)}]
+     [:svg {:margin-left (px 5)}]]]])
 
 (def styles-vertical
   [[:.home {:grid-template-areas
