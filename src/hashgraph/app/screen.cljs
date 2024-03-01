@@ -17,6 +17,7 @@
             [hashgraph.utils.core :refer [log-flush!] :refer-macros [l]]
             [hashgraph.utils-test]
             [hashgraph.utils.js-map-test]
+            [hashgraph.app.events :as hga-events]
             [hashgraph.app.playback :as hga-playback]
             [hashgraph.app.tutorial :as hga-tutorial]))
 
