@@ -132,7 +132,7 @@
    (rum/defc tutor-other-parent-view < rum/reactive
      [event]
      [:div.tutor.unbound
-      "And gossip them to others.\n\n"
+      "And gossip them to each other.\n\n"
 
       "On receival of an event from another member\n"
       "a " (i event "new event") " is created, referencing\n"
@@ -154,10 +154,7 @@
       "This alone builds the structure of how members\n"
       "communicated with each other - a (hash)graph of gossip!\n\n"
 
-      "Well, was it shorter than expected? Sorry to disapoint. -_-\n\n"
-
-      "...okaay! We didn't get events ordered yet,\n"
-      "now to the virtual voting bit.. it'll be more juicy."])
+      "Well, was it shorter than expected? Sorry to disapoint. -_-"])
    (fn [event]
      (when (hg/self-parent event)
        {::type ::self-parent
@@ -170,6 +167,9 @@
      [:div.tutor
       ;; "In order for an " (i event "event") " to be received, it's order must be concluded.\n"
       ;; "This is done by via virtual voting.\n"
+      "...okaay! We didn't get events ordered yet,\n"
+      "now to the virtual voting bit.. it'll be more juicy.\n\n"
+
       "Step #1 is to determine " (i round "event's round number") "."])
    (fn [event]
      (when (= 3 (hg/index event))
@@ -317,10 +317,12 @@
    (rum/defc tutor-why-all-of-this-p1-view
      []
      [:div.tutor.unbound
-      "Phew? Been plenty enough? Well, sorry, it's almost all there is.\n"
+      "Phew? Been plenty enough? What do you mean \"no\"?\n"
+      "Well, sorry, it's almost all there is.\n\n"
+
       "But what's all this hussle for, again?\n\n"
 
-      "Events may carry a transaction - some arbitrary code to run.\n"
+      "Event may carry a transaction - some arbitrary code to run.\n"
       "Transactions may conflict with each other, e.g., the famous double-spend.\n"
       "Having they be executed in parallel - we'd end up in a messed up state,\n"
       "how horrible would that be?!"])
@@ -422,15 +424,17 @@
    (rum/defc tutor-inc-counter-tx-view < rum/reactive
      [[event tx :as event+tx]]
      [:div.tutor.unbound
-      "Event may carry a transaction,\n"
-      "that is to be executed when event gets received.\n\n"
+      "Do you remember how an event may carry a transaction,\n"
+      "that is to be executed when it's received?\n"
 
-      "\"Aha, finally the useful bit!\"?\n"
+      "\"Aha, the actually useful bit.\"?\n"
       "Yeeas, the whole point of this excercise.\n\n"
 
-      (i event+tx "This event's transaction") ", issued by " (hg/creator event) ",\n"
-      "increments a counter by 1.\n"
-      "Not much of a transaction, I know.. " (hg/creator event) "\n"
+      "Then behold! " (i event+tx "This event's transaction") ", issued by " (hg/creator event) ",\n"
+      "increments a counter by 1. Whoooa!\n\n"
+
+      "Yeah, okay, I feel why you're a bit underwhelmed.\n"
+      "Not much of a transaction, I see.. " (hg/creator event) "\n"
       " could come up with something more interesting."])
    (fn [event]
      (when (-> event :event/tx :tx/fn-id (= :inc-counter))
@@ -448,12 +452,13 @@
                     "all"
                     (str (first ratio) "/" (second ratio)))]
        [:div.tutor.unbound
-        (i event+tx "This event's transaction") ", issued by " (hg/creator event) ",\n"
+        "But now to the actually cool transactions.\n"
+        (i event+tx "This one") ", issued by " (hg/creator event) ",\n"
         "transfers " amount " of holded by " pron " stake to " to ".\n"
-        "Whoa! That's interesting, stake's dynamic! \n"
+        "Whoa? Yess! That's interesting, stake's DYNAMIC! \n"
         to " will be invited to participate in this permissioned system.\n\n"
 
-        "(stake holders can transfer only their own stake, in case you wonder,\n"
+        "(stake holders can transfer only their own stake, yes,\n"
         " if so try to do others - their txes are considered invalid)"]))
    (fn [event]
      (when (-> event :event/tx :tx/fn-id (= :share-stake))
