@@ -78,9 +78,9 @@
    {}
    #_{:format-pstats-opts {:columns      [:n :p50 :mean :clock :sum]
                            :format-id-fn name}})
+
+  (hga-tutorial/create-tutors!)
+  (hga-playback/resolve-more-events-on-idle! hga-events/events<)
   (hga-keyboard/register-keydowns-lister!)
-  (hga-tutorial/init-tutorial-events!)
-  (hga-playback/buffer-playback-left-events-on-exhaust!)
-  (hga-playback/buffer-playback-left-events-async-on-idle!)
 
   (start))

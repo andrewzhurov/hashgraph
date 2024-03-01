@@ -69,9 +69,6 @@
 
      )))
 
-(defn init-tutorial-events! []
-  (reset! hga-playback/*just-left< tutorial-events))
-
 (def cart-style
   {:padding       "10px"
    :border        "1px solid lightgray"
@@ -522,9 +519,9 @@
    })
 
 
-(def *tutors-playback (atom {:behind> '()
-                             ;; :current nil
-                             :ahead< '()}))
+(defonce *tutors-playback (atom {:behind> '()
+                                 ;; :current nil
+                                 :ahead<  '()}))
 
 ;; == create tutors ==
 (defonce *left-view->state-fn
@@ -552,15 +549,16 @@
       (swap! *tutors-playback update :ahead< (fn [ahead<] (->> (concat ahead< distinct-on-event-tutors)
                                                                (sort-by (comp hg/creation-time ::on-event) <)))))))
 
-(add-watch hga-playback/*just-left< ::derive-event->tutor
-           (fn [_ _ _ just-left<]
-             (doall
-              (doseq [event just-left<]
-                (maybe-create-tutor! event)))
-
-             (when (empty? @*left-view->state-fn)
-               (l [:tutors-created :removing-watch])
-               (remove-watch hga-playback/*just-left< ::derive-event->tutor))))
+(defn create-tutors! []
+  (set! hga-events/initial-events< tutorial-events)
+  (set! hga-events/events< (hga-events/->events<))
+  (reset! hga-playback/*left< hga-events/events<)
+  (js/console.log "creating tutors")
+  (loop [events hga-events/events<]
+    (when-not (empty? @*left-view->state-fn)
+      (maybe-create-tutor! (first events))
+      (recur (rest events))))
+  (js/console.log "tutors created"))
 ;; ==================
 
 
