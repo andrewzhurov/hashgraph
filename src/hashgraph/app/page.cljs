@@ -158,17 +158,15 @@
      [:.witness-view {:stroke       :black
                       :stroke-width 1
                       :fill         :transparent
-                      :r            hga-view/evt-r
                       :opacity      0
                       :transition   (t :r tt :opacity tt)}
-      [:&.present {:r       hga-view/wit-r
-                   :opacity 0.33}
+      [:&.present {:opacity 0.33}
        [:&.final {:opacity 1}]]]
 
      [:.witness-view-hit-slope {:stroke       :transparent
                                 :stroke-width 15
                                 :fill         :transparent
-                                :r            hga-view/wit-r}]]
+                                }]]
 
     [:.round-number {:font-size (px 14)
                      :fill :gray
@@ -217,15 +215,19 @@
   (let [witness-shown? (and witness? (rum/react hga-state/*show-witnesses?))]
     [:g.witness-view-wrapper (when (and witness-shown? #_@*paths)
                                (inspectable :witness #_@*paths {:passive? true}))
-     [:circle.witness-view {:key "witness-view"
+     [:circle.witness-view {:key   "witness-view"
+                            :r     (if witness-shown?
+                                     hga-view/wit-r
+                                     hga-view/evt-r)
                             :class [(if witness-shown? "present" "absent")
                                     (when (and witness? final?) "final")]}]
      (when witness-shown?
        ;; even though calc is optimized, highlight of affected ones is darn slow
        ;; it'll be way faster to highlight them by tweaking their view-state
        ;; a separate view-state of inspectables can be kept
-       [:circle.witness-view-hit-slope #_{:on-mouse-enter #(when-not @*paths
-                                                             (reset! *paths (hg/->strongly-see-r-paths event cr (dec number))))}])]))
+       [:circle.witness-view-hit-slope {:r              hga-view/wit-r
+                                        #_#_:on-mouse-enter #(when-not @*paths
+                                                           (reset! *paths (hg/->strongly-see-r-paths event cr (dec number))))}])]))
 
 (rum/defcs event-votes-view <
   hga-utils/static-by-hashes
