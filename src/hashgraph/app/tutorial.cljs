@@ -121,7 +121,7 @@
   {
    (rum/defc tutor-event-view < rum/reactive
      [event]
-     [:div.tutor
+     [:div.tutor.unbound
       "Members create events, such as " (i event "this one") "."])
    (fn [event]
      (when (= 1 (:event/creation-time event))
@@ -164,7 +164,7 @@
 
    (rum/defc tutor-round-view < rum/reactive
      [event round]
-     [:div.tutor
+     [:div.tutor.unbound
       ;; "In order for an " (i event "event") " to be received, it's order must be concluded.\n"
       ;; "This is done by via virtual voting.\n"
       "...okaay! We didn't get events ordered yet,\n"
