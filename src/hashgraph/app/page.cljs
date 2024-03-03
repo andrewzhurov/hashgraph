@@ -341,23 +341,24 @@
         (event-votes-view round votes witness? event)
 
         ;; always rendering white background to hide refs
-        (let [{:keys [red green blue]
-               :or   {red 255 green 255 blue 255}} (js-map/get view-state :fill)
-              fill-opacity-percent (* 100 fill-opacity)
+        (let [{:keys [red green blue] :as fill} (js-map/get view-state :fill)
               tx (:event/tx event)]
           [:g (inspectable (cond-> [event]
                              received-event (conj received-event)
                              tx             (conj tx))
                            {:->inspected?   (fn [ips els]           (->> els (some (fn [el] (hga-inspector/->in ips el)))))
                             :->accented?    (fn [accented _ips els] (->> els (some (fn [el] (hga-inspector/->in accented el)))))})
-           [:circle.event {:class        (when received-event "received")
-                           :r            hga-view/evt-r
+           [:circle.event {:r            hga-view/evt-r
                            :stroke       color
                            :stroke-width 1
-                           :fill         (gc/hsl->hex (gc/lighten (gc/rgb red green blue) (- 100 fill-opacity-percent)))}]
+                           :fill         "white"}]
+           (when (> fill-opacity 0)
+             [:circle.received-event {:class (when received-event "received")
+                                      :r     hga-view/evt-r
+                                      :fill  (str "rgba(" red "," green "," blue "," fill-opacity ")")}])
            (when tx
              [:g.tx-wrapper {:style {:scale "0.8"}}
-              (event-tx-view tx {:color (gc/hsl->hex (gc/lighten (gc/hsl 0 0 0) fill-opacity-percent))})])])
+              (event-tx-view tx {:color (gc/hsl->hex (gc/lighten (gc/hsl 0 0 0) (* 100 fill-opacity)))})])])
 
         (event-round-view round)]])))
 
