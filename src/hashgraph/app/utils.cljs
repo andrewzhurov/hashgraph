@@ -104,24 +104,11 @@
                                (per-animation-frame-cb)
                                (per-animation-frame-while per-animation-frame-cb while-pred))))
 
-
-
 (def static-by-hashes
   {:should-update (fn [old-state new-state]
                     (let [old-args (:rum/args old-state)
                           new-args (:rum/args new-state)]
-                      (or (not= (count old-args) (count new-args))
-                          (loop [old-args-left old-args
-                                 new-args-left new-args]
-                            (cond (empty? new-args-left)
-                                  false
-
-                                  (not= (hash (first old-args-left))
-                                        (hash (first new-args-left)))
-                                  true
-
-                                  :else
-                                  (recur (rest old-args-left) (rest new-args-left)))))))})
+                      (utils/hashes= old-args new-args)))})
 
 (rum/defc static-by-hashes-testee-comp <
   static-by-hashes

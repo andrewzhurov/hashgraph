@@ -193,6 +193,19 @@
 (defn svs? [el] (or (seq? el) (vector? el) (set? el)))
 (defn flattenable? [el] (svs? el))
 (defn hash= [el1 el2] (= (hash el1) (hash el2)))
+(defn hashes= [coll1 coll2]
+  (or (not= (count coll1) (count coll2))
+      (loop [coll1-left coll1
+             coll2-left coll2]
+        (cond (empty? coll2-left)
+              false
+
+              (not (hash= (first coll1-left)
+                          (first coll2-left)))
+              true
+
+              :else
+              (recur (rest coll1-left) (rest coll2-left))))))
 
 (defn flatten-all [maybe-flattenbale]
   (if-not (flattenable? maybe-flattenbale)
