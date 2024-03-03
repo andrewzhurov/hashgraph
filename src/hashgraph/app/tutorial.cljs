@@ -125,9 +125,11 @@
       "Members create events, such as " (i event "this one") "."])
    (fn [event]
      (when (= 1 (:event/creation-time event))
-       {::on-event event
-        ::y        (->y event)
-        ::args     [event]}))
+       {::on-event  event
+        ::on-play   #(reset! hga-state/*show-members? true)
+        ::on-rewind #(reset! hga-state/*show-members? false)
+        ::y         (->y event)
+        ::args      [event]}))
 
    (rum/defc tutor-other-parent-view < rum/reactive
      [event]
