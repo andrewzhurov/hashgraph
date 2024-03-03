@@ -350,14 +350,12 @@
 
   ;; 1. new cr - lookup whether final
   ;; TODO lookup if no mem exist first
-  (let [[prev-round-mem prev-cr]
-        (->> cr
-             (iterate :concluded-round/prev-concluded-round)
-             (take-while some?)
-             (drop 1) ;; this fn would not be executed on a memoized cr
-             (take 5) ;; taking just some crs to check, as it gets increasingly costly as crs grow
-             (some (fn [cr] (when (->in-mem? [x cr])
-                              [(->from-mem [x cr]) cr]))))]
+  (let [?prev-round-mem
+        (loop [?cr cr]
+          (when-let [cr ?cr]
+            (if (->in-mem? [x cr])
+              (->from-mem [x cr])
+              (recur (:concluded-round/prev-concluded-round cr)))))]
 
     ;; Once round r is settled, the _future_ rounds will reshuffle,
     ;; and the calculations for round r + 1 famous witnesses will be done using the new stake record.
