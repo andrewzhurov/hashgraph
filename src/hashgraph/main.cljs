@@ -351,14 +351,6 @@
   ;; 1. new cr - lookup whether final
   ;; TODO lookup if no mem exist first
   (let [[prev-round-mem prev-cr]
-        #_(when-let [x-mem (get mem x)]
-          (->> ?cr
-               :concluded-round/prev-concluded-round ;; this fn would not be executed on a memoized ?cr
-               (iterate :concluded-round/prev-concluded-round)
-               (take-while some?)
-               (some (fn [cr]
-                       (when-let [round-mem (get x-mem cr)] ;; doesn't lookup nil cr
-                         [round-mem cr])))))
         (->> cr
              :concluded-round/prev-concluded-round ;; this fn would not be executed on a memoized cr
              (iterate :concluded-round/prev-concluded-round)
