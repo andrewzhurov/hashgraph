@@ -2,6 +2,7 @@
   (:require
    [cljs.math :refer [floor ceil]]
    [clojure.set :as set]
+   [clojure.test :refer [deftest testing is are run-tests]]
    [rum.core :as rum]
    [hashgraph.main :as hg]
    [hashgraph.app.view :as hga-view]
@@ -100,7 +101,7 @@
         ;; try again, with a different random offset
         (->next-creation-time prev-creation-time)))))
 
-(defn ->chat [{:chatter/keys [before> prev-t t after>] :as chatter} sender]
+(defn ->chat [{:chatter/keys [before> min-nct-t after>] :as chatter} sender]
   (let [all>          (concat after> before>)
         creator->hg   (-> all> events>->c->hg)
         main-tip      (-> all> hg/events>->main-tip)
@@ -112,7 +113,7 @@
         new-after>*
         (if (nil? ?sender-hg)
           (let [new-sender-hg (hash-map :event/creator       sender
-                                        :event/creation-time (->next-creation-time t))]
+                                        :event/creation-time (->next-creation-time min-nct-t))]
             (conj after> new-sender-hg))
 
           (let [sender-hg ?sender-hg
@@ -138,7 +139,7 @@
                                                                (:event/creation-time (first all>))
                                                                (max (:event/creation-time sender-hg)
                                                                     (:event/creation-time ?receiver-hg)
-                                                                    t))
+                                                                    min-nct-t))
                                                              (->next-creation-time)))
                                          ?receiver-hg (assoc :event/self-parent ?receiver-hg)
                                          :always      (with-occasional-share-stake-tx all>)
@@ -148,36 +149,77 @@
         new-after> (sort-by hg/creation-time > new-after>*)]
     (assoc chatter :chatter/after> new-after>)))
 
-(defn ->chatter [{:chatter/keys [before> t after>] :as chatter}]
+(def too-old-t (* 2 hga-view/evt-offset))
+(defn ->chatter [{:chatter/keys [before> settled-t min-nct-t after>] :as chatter}]
   (let [all>          (concat after> before>)
+        creator->hg   (-> all> events>->c->hg)
         main-tip      (-> all> hg/events>->main-tip)
         cr            (-> main-tip hg/->concluded-round)
         stake-map     (-> cr hg/concluded-round->stake-map)
         stake-holders (set (keys stake-map))
+        eligible-stake-holders (or (not-empty (->> stake-holders
+                                                   (filter (fn [sh] (let [?hg (get creator->hg sh)]
+                                                                      (or (nil? ?hg)
+                                                                          (>= (hg/creation-time ?hg) (- min-nct-t hga-view/evt-offset))))))))
+                                   (->> stake-holders
+                                        (sort-by (comp hg/creation-time creator->hg) >)
+                                        (take 1)))
 
-        new-chatter*              (reduce ->chat chatter stake-holders)
+        new-chatter*              (reduce ->chat chatter eligible-stake-holders)
+        ;; new-chatter*              (reduce ->chat new-chatter* eligible-stake-holders)
         new-after>                (:chatter/after> new-chatter*)
-        new-t                     (->next-creation-time t :dry-run? true)
-        [new-after> just-before>] (->> new-after> (split-with #(> (hg/creation-time %) new-t)))]
+        new-after>-count          (count new-after>)
+        to-keep-max-count         20
+        to-release                (max (ceil (/ new-after>-count 2))
+                                       (- new-after>-count to-keep-max-count))
+        [new-after> just-before>] (split-at to-release new-after>)
+        new-before>               (concat just-before> before>)
+        new-settled-t             (-> new-before> first hg/creation-time)]
     (assoc new-chatter*
-           :chatter/t            new-t
-           :chatter/before>      (concat just-before> before>)
+           :chatter/before>      new-before>
            :chatter/just-before> just-before>
+           :chatter/settled-t    new-settled-t
+           :chatter/min-nct-t    (- new-settled-t hga-view/evt-offset)
            :chatter/after>       new-after>)))
 
-(defonce ^:dynamic initial-events< '())
-
 (defn ->events<
-  ([] (reduce (fn [acc initial-evt] (cons initial-evt acc))
-              (->events< #:chatter{:before> (reverse initial-events<)
-                                   :t       (or (some->> initial-events< last hg/creation-time inc)
-                                                0)
-                                   :after>  '()})
-              (reverse initial-events<)))
+  ([] (->events< #:chatter{:before> '()
+                           :t       0
+                           :after>  '()}))
   ([prev-chatter]
    (lazy-seq (let [chatter      (->chatter prev-chatter)
                    just-before> (:chatter/just-before> chatter)]
                (reduce (fn [acc evt] (cons evt acc)) (->events< chatter) just-before>)))))
 
-(defonce ^:dynamic events< '())
+(defn initial-events<->events< [initial-events<]
+  (let [initial-events> (reverse initial-events<)]
+    (reduce (fn [acc initial-evt] (cons initial-evt acc))
+            (->events< #:chatter{:before> initial-events>
+                                 :t       (-> initial-events> first hg/creation-time inc)
+                                 :after>  '()})
+            initial-events>)))
 
+(deftest ->events<-test
+  (let [events<        (->events<)
+        events<-tested (take 200 events<)]
+    (testing "events are in ascending creation time order"
+      (let [*prev->next-violations (volatile! {})]
+        (doall
+         (->> events<-tested (reduce (fn [prev-evt evt] (when-not (< (hg/creation-time prev-evt)
+                                                                     (hg/creation-time evt))
+                                                          (vswap! *prev->next-violations assoc prev-evt evt)
+                                                          evt)))))
+        (is (empty? @*prev->next-violations) "events are not in ascending creation time order")))
+
+    (testing "events have not too old other-parent"
+      (let [*violations (volatile! [])]
+        (doall
+         (doseq [evt events<-tested]
+           (when-let [op (hg/other-parent evt)]
+             (let [dt (-> evt hg/creation-time
+                          (- (-> op hg/creation-time)))]
+               (when (> dt (* too-old-t 2))
+                 (vswap! *violations conj [dt evt]))))))
+        (l @*violations)
+        (is (= [] @*violations) "some events have too old other-parent")
+        ))))

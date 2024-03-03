@@ -35,7 +35,8 @@
 ;;            These events are also rendered, in order to display rewinding transition.
 ;;            Even though rewinded events are rendered,
 ;;            they do not contribute to main algorithm / they are no more present.
-(defonce *left< (atom hga-events/events<))
+(defonce ^:dynamic *left< nil)
+
 (defonce *playback (atom {:behind>   '()   ;; on play we'll read from the first when putting to played V
                           :played<   '()   ;; on play we'll read from the first when putting to behind ^
                           :rewinded< '() ;; on play we'll read from the first when putting to played ^
