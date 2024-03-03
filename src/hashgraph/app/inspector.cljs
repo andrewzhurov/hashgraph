@@ -245,9 +245,8 @@
                                   (not-empty peeked)
                                   (inspect peeked)))))
 
-(def ->analysis?
-  (fn []
-    (not (empty? (rum/react *inspected-with-peeked)))))
+(def *analysis? (rum/derived-atom [*inspected-with-peeked] ::derive-analysis?
+                  (fn [inspected-with-peeked] (not (empty? inspected-with-peeked)))))
 
 (def ->accented?*
   (fn [accented ips el]
@@ -276,7 +275,7 @@
                                  ;; path     []
                                  } :as opts}]]
   (when in-view?
-    (let [analysis? (->analysis?)]
+    (let [analysis? (rum/react *analysis?)]
       (cond-> {:class (cond-> ["inspectable"
                                (when nested? "nested")]
 
