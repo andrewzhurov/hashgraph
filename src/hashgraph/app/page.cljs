@@ -362,12 +362,6 @@
 
         (event-round-view round)]])))
 
-(defn* ^:memoizing ?received-event->event->received-event
-  [?received-event]
-  (if (nil? ?received-event)
-    (hash-map)
-    (let [prev (?received-event->event->received-event (:received-event/prev-received-event ?received-event))]
-      (assoc prev (:received-event/event ?received-event) ?received-event))))
 
 (defn* ^:memoizing concluded-round->witness->cr+vote
   [{:concluded-round/keys [r w->vote prev-concluded-round] :as cr}]
@@ -388,59 +382,59 @@
           (> cr-r r) (recur (:concluded-round/prev-concluded-round cr) r))))
 
 (def *rendered-evt-infos
-  (rum/derived-atom [hga-playback/*playback] ::*rendered-evt-infos
+  (rum/derived-atom [hga-playback/*playback hga-state/*main-tip hga-state/*last-cr hga-state/*event->received-event] ::*rendered-evt-infos
     (fn [{:keys [behind>
                  played<   ;; asc
                  rewinded< ;; asc
-                 ]}]
-      (let [played>               (reverse played<)
-            ?main-tip             (hg/events>->main-tip played>)
-            ?last-concluded-round (some-> ?main-tip hg/->concluded-round)
-            ?concluding-main-tip  ?main-tip
-            _                     (reset! hga-state/*last-concluded-round ?last-concluded-round)
-            ?last-received-event  (some-> ?last-concluded-round :concluded-round/last-received-event)
-            event->received-event (?received-event->event->received-event ?last-received-event)
-            ->event-info          (fn [event]
-                                    (let [{r        :round/number
-                                           r-final? :round/final?
-                                           r-cr     :round/cr :as round} (hg/->round event ?last-concluded-round)
+                 ]}
+         ?main-tip
+         last-cr
+         event->received-event]
+      (let [->event-info
+            (fn [event]
+              (let [{r        :round/number
+                     r-final? :round/final?
+                     r-cr     :round/cr :as round} (hg/->round event last-cr)
 
-                                          witness?            (hg/witness? event r-cr)
-                                          will-receive-votes? (and witness? r-final?)
-                                          receives-votes?     (and will-receive-votes? ?concluding-main-tip
-                                                                   (hg/voting-round? ?concluding-main-tip event r-cr)
-                                                                   (hg/ancestor? ?concluding-main-tip event))
-                                          ?cr                 (when receives-votes?
-                                                                (cr+r->?cr ?last-concluded-round r))
-                                          ?votes            (when receives-votes?
-                                                              (if ?cr
-                                                                (hg/->votes (:concluded-round/witness-concluded ?cr) event (:concluded-round/prev-concluded-round ?cr))
-                                                                (hg/->votes ?concluding-main-tip event ?last-concluded-round)))
-                                          ?received-event   (event->received-event event)
+                    witness?            (hg/witness? event r-cr)
+                    will-receive-votes? (and witness? r-final?)
+                    receives-votes?     (and will-receive-votes? ?main-tip
+                                             (hg/voting-round? ?main-tip event r-cr)
+                                             (hg/ancestor? ?main-tip event))
+                    ?cr                 (when receives-votes?
+                                          (cr+r->?cr last-cr r))
+                    ?votes              (when receives-votes?
+                                          (if-let [cr ?cr]
+                                            (hg/->votes (:concluded-round/witness-concluded cr) event (:concluded-round/prev-concluded-round cr))
+                                            (hg/->votes ?main-tip event last-cr)))
+                    ?received-event     (event->received-event event)
 
-                                          color           (event->color event)
-                                          event-info      (cond-> (hash-map :event-info/color    color
-                                                                            :event-info/event    event
-                                                                            :event-info/round    round)
-                                                            witness?        (assoc :event-info/witness? witness?)
-                                                            ?cr             (assoc :event-info/cr ?cr)
-                                                            ?votes          (assoc :event-info/votes ?votes)
-                                                            ?received-event (assoc :event-info/received-event ?received-event))]
-                                      event-info))]
-        [(->> behind>
+                    color      (event->color event)
+                    event-info (cond-> (hash-map :event-info/color    color
+                                                 :event-info/event    event
+                                                 :event-info/round    round)
+                                 witness?        (assoc :event-info/witness? witness?)
+                                 ?cr             (assoc :event-info/cr ?cr)
+                                 ?votes          (assoc :event-info/votes ?votes)
+                                 ?received-event (assoc :event-info/received-event ?received-event))]
+                event-info))]
+        [(->> rewinded<
+              (take 10)
+              reverse
+              (map ->event-info))
+         (->> played<
+              reverse
+              (map ->event-info))
+         (->> behind>
               (take 10)
               (map ->event-info))
-         (->> played>
-              (map ->event-info))
-         (->> (reverse (take 10 rewinded<))
-              (map ->event-info))]))))
+         ]))))
 
 
 (rum/defc viz < rum/reactive
   []
   (let [[behind-evt-infos> played-evt-infos> rewinded-evt-infos>] (rum/react *rendered-evt-infos)]
     [:div#viz
-     (hga-members/view)
      [:svg#render {(if hga-view/view-mode-horizontal? :width :height) (hga-view/evt->viz-height (-> played-evt-infos> first :event-info/event))
                    (if hga-view/view-mode-horizontal? :height :width) hga-view/viz-x-span}
       [:g.events-view

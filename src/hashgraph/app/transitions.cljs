@@ -137,7 +137,7 @@
 (def cr-tt-delay (/ tt 20))
 (def **last-cr-tt-start (volatile! (cljs.core/system-time)))
 (def **last-cr-direction (volatile! nil))
-(add-watch hga-state/*last-concluded-round ::transitions-on-concluded-round
+(add-watch hga-state/*last-cr ::transitions-on-concluded-round
            (fn [_ _ prev-cr current-cr]
              (when (not (identical? prev-cr current-cr))
                (if (> (:concluded-round/r current-cr)
