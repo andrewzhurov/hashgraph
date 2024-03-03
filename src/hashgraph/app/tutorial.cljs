@@ -554,12 +554,9 @@
       (swap! *tutors-playback update :ahead< (fn [ahead<] (->> (concat ahead< distinct-on-event-tutors)
                                                                (sort-by (comp hg/creation-time ::on-event) <)))))))
 
-(defn create-tutors! []
-  (set! hga-events/initial-events< tutorial-events)
-  (set! hga-events/events< (hga-events/->events<))
-  (reset! hga-playback/*left< hga-events/events<)
+(defn create-tutors! [events<]
   (js/console.log "creating tutors")
-  (loop [events hga-events/events<]
+  (loop [events events<]
     (when-not (empty? @*left-view->state-fn)
       (maybe-create-tutor! (first events))
       (recur (rest events))))

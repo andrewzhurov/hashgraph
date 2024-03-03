@@ -80,8 +80,10 @@
    #_{:format-pstats-opts {:columns      [:n :p50 :mean :clock :sum]
                            :format-id-fn name}})
 
-  (hga-tutorial/create-tutors!)
-  (hga-playback/resolve-more-events-on-idle! hga-events/events<)
+  (let [events< (hga-events/initial-events<->events< hga-tutorial/tutorial-events)]
+    (hga-playback/init-playback! events<)
+    (js/setTimeout #(hga-tutorial/create-tutors! events<)))
+
   (hga-keyboard/register-keydowns-lister!)
 
   (start))

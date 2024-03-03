@@ -49,7 +49,7 @@
 ;; As events viz is scrolled forward, advancing time, more events get "created".
 ;; As events viz is scrolled backwards, time's rewinded.
 
-(def sync-playback-with-viz-scroll
+(defn sync-playback-with-viz-scroll! []
   (add-watch hga-state/*viz-scroll ::sync-playback-with-scroll
              (fn [_ _ old-viz-scroll new-viz-scroll]
                (let [delta                               (- new-viz-scroll old-viz-scroll)
@@ -114,6 +114,16 @@
                                            (drop 5 resolved-events-nexts))
                                        resolved-events-nexts)]
        (resolve-more-events-on-idle! new-resolved-events-nexts)))))
+
+
+
+
+
+(defn init-playback! [events<]
+  (set! *left< (atom events<))
+  (add-watch *left< ::resolve-next-left< (fn [_ _ _ left<] (take 10 left<)))
+  (sync-playback-with-viz-scroll!)
+  (resolve-more-events-on-idle! events<))
 
 
 (defn ->playback-events< [{:keys [behind> played< rewinded<]}]
