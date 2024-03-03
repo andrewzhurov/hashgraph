@@ -3,12 +3,14 @@
             [garden.units :refer [px]]
             [hashgraph.main :as hg]
             [hashgraph.members :as hg-members]
+            [hashgraph.app.state :as hga-state]
             [hashgraph.app.view :as hga-view]
             [hashgraph.app.styles :refer [reg-styles!]]
             [hashgraph.app.icons :as hga-icons]
             [hashgraph.app.avatars :as hga-avatars]
             [hashgraph.app.playback :as hga-playback]
             [hashgraph.app.transitions :as hga-transitions]
+            [hashgraph.app.utils :as hga-utils]
             [hashgraph.utils.core
              :refer [merge-attr-maps color-rgba-str timing *->time*]
              :refer-macros [defn* l letl]
@@ -59,28 +61,33 @@
 
 (reg-styles! ::members styles styles-horizontal styles-vertical)
 
-(rum/defc view < rum/reactive []
-  (let [?main-tip             (hg/events>->main-tip (reverse (rum/react hga-playback/*played<)))
-        ?last-concluded-round (some-> ?main-tip hg/->concluded-round)
-        stake-map             (hg/concluded-round->stake-map ?last-concluded-round)]
-    [:div#members
-     (for [member-name hg-members/names]
-       (let [member    (hg-members/member-name->person member-name)
-             active?   (contains? stake-map member-name)
-             stake-pos (/ (get stake-map member-name) hg/total-stake)
-             hardly-reachable? (hg-members/hardly-reachable-member-names member-name)]
-         [:div.member {:key   member-name
-                       :class [(when active? "active")]
-                       :style {(if hga-view/view-mode-horizontal? :top :left) (- (hga-view/idx->x (:member/idx member))
-                                                                                 (/ hga-view/avatar-size 2))}}
-          (case (:member/gender member)
-            :male   (hga-avatars/male-avatar   (color-rgba-str (:member/color-rgb member) 1) (color-rgba-str (:member/color-rgb member) stake-pos))
-            :female (hga-avatars/female-avatar (color-rgba-str (:member/color-rgb member) 1) (color-rgba-str (:member/color-rgb member) stake-pos))
-            [:div "unknown gender"])
+(rum/defc member-view < rum/static
+          {:key-fn (fn [member-name] member-name)}
+          [member-name active? stake-pos]
+          (let [member            (hg-members/member-name->person member-name)
+                hardly-reachable? (hg-members/hardly-reachable-member-names member-name)]
+            [:div.member {:key   member-name
+                          :class [(when active? "active")]
+                          :style {(if hga-view/view-mode-horizontal? :top :left) (- (hga-view/idx->x (:member/idx member))
+                                                                                    (/ hga-view/avatar-size 2))}}
+             (case (:member/gender member)
+               :male   (hga-avatars/male-avatar   (color-rgba-str (:member/color-rgb member) 1) (color-rgba-str (:member/color-rgb member) stake-pos))
+               :female (hga-avatars/female-avatar (color-rgba-str (:member/color-rgb member) 1) (color-rgba-str (:member/color-rgb member) stake-pos))
+               [:div "unknown gender"])
 
-          [:div.connectivity {:class (when hardly-reachable? "poor")
-                              :title "Poor connectivity"}
-           (hga-icons/icon :solid :poor-connectivity :size :sm)]
+             [:div.connectivity {:class (when hardly-reachable? "poor")
+                                 :title "Poor connectivity"}
+              (hga-icons/icon :solid :poor-connectivity :size :sm)]
 
-          [:div.member-name
-           member-name]]))]))
+             [:div.member-name
+              member-name]]))
+
+(rum/defc view < rum/reactive
+          []
+          (let [show-members? (rum/react hga-state/*show-members?)
+                stake-map     (rum/react hga-state/*stake-map)]
+            [:div#members
+             (for [member-name hg-members/names]
+               (let [active?   (and show-members? (contains? stake-map member-name))
+                     stake-pos (/ (get stake-map member-name) hg/total-stake)]
+                 (member-view member-name active? stake-pos)))]))

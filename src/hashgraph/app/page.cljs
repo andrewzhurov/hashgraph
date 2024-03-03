@@ -462,6 +462,7 @@
   [:div#viz-section {:style {:position :relative}}
    (hga-tutorial/view)
    (viz)
+   (hga-members/view)
    (hga-inspector/bins-view)
    ])
 
