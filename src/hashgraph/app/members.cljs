@@ -75,6 +75,7 @@
                :female (hga-avatars/female-avatar (color-rgba-str (:member/color-rgb member) 1) (color-rgba-str (:member/color-rgb member) stake-pos))
                [:div "unknown gender"])
 
+             #_
              [:div.connectivity {:class (when hardly-reachable? "poor")
                                  :title "Poor connectivity"}
               (hga-icons/icon :solid :poor-connectivity :size :sm)]
