@@ -14,10 +14,11 @@
    [hashgraph.utils.core
     :refer-macros [defn* l]
     :refer [*parent-log-path* *parent-log-path-logging?* *log-path* *log-path-logging?*
-            debounce lazy-derived-atom atomic? conjs merge-attr-maps
+            debounce conjs merge-attr-maps
             svs? hash= flat flattenable? flatten-all distinct-with]
     :as utils]
    [hashgraph.utils2 :refer-macros [td time3]]
+   [hashgraph.utils.lazy-derived-atom :refer [lazy-derived-atom atomic?]]
 
    [rum.core :as rum]
    [taoensso.timbre :refer-macros [spy info]]
