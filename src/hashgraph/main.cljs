@@ -352,13 +352,13 @@
   ;; TODO lookup if no mem exist first
   (let [[prev-round-mem prev-cr]
         (->> cr
-             :concluded-round/prev-concluded-round ;; this fn would not be executed on a memoized cr
              (iterate :concluded-round/prev-concluded-round)
              (take-while some?)
-             ;; perhaps take n crs to check, e.g., 5, not all, to limit otheriwse increasing cost as crs become many
-             (some (fn [cr]
-                     (when (->in-mem? [x cr])
-                       [(->from-mem [x cr]) cr]))))]
+             (drop 1) ;; this fn would not be executed on a memoized cr
+             (take 5) ;; taking just some crs to check, as it gets increasingly costly as crs grow
+             (some (fn [cr] (when (->in-mem? [x cr])
+                              [(->from-mem [x cr]) cr]))))]
+
     ;; Once round r is settled, the _future_ rounds will reshuffle,
     ;; and the calculations for round r + 1 famous witnesses will be done using the new stake record.
     ;; source: https://hyp.is/QxYPUqyAEe6hUtsMYuakKQ/www.swirlds.com/downloads/SWIRLDS-TR-2016-01.pdf
