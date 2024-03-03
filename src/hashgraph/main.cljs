@@ -363,18 +363,21 @@
 
     ;; So, once there is a cr that gave round number less or equal to cr+1 - it's final.
     ;; We need _less_ for cases when stake changed and more events received cr's round number.
-    (or (when (:round/final? prev-round-mem)
-          prev-round-mem)
+    (or (when (:round/final? ?prev-round-mem)
+          ?prev-round-mem)
 
         ;; 2. new event (or not cr not final)
         ;; or max parent's cr gives final round or the one after
         ;; but it's not guaranteed that parents have final rounds
         ;; and we'd like to memo for all crs anyways, so run from max parents' cr
-        (let [p-rounds  (map (fn [p] (->round p cr)) (parents x))
-              p-?crs    (->> p-rounds (map :round/cr))
-              p-max-?cr (->> p-?crs
-                             (sort-by :concluded-round/r)
-                             last)
+        (let [p-rounds   (map (fn [p] (->round p cr)) (parents x))
+              p-crs      (->> p-rounds (map :round/cr))
+              ?p-max-cr-r (->> p-crs
+                               (map :concluded-round/r)
+                               (apply max))
+              ?try-after-cr-r (max (some-> ?prev-round-mem :round/cr :concluded-round/r)
+                                   (some-> ?p-max-cr-r dec))
+
               crs-to-try
               (->> cr
                    (iterate :concluded-round/prev-concluded-round)
