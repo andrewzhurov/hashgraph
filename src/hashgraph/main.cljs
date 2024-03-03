@@ -382,12 +382,18 @@
               (->> cr
                    (iterate :concluded-round/prev-concluded-round)
                    (take-while some?)
-                   (take-while (fn [cr] (and (not (identical? cr p-max-?cr))
-                                             #_(not (identical? cr prev-cr)))))
-                   reverse)]
-          (or (->> crs-to-try
-                   (some (fn [cr] (let [cr-round (->round-info x cr)]
-                                    (when (:round/final? cr-round) cr-round)))))
+                   (drop 1) ;; we'll close with it, if none to-try are final
+                   (take-while (fn [cr] (or (nil? ?try-after-cr-r)
+                                            (> (:concluded-round/r cr) ?try-after-cr-r))))
+                   reverse)
+
+              ?final-round (loop [[?cr-to-try & crs-to-try-rest] crs-to-try]
+                             (when ?cr-to-try
+                               (let [cr-round (->round-info x ?cr-to-try)]
+                                 (if (:round/final? cr-round)
+                                   cr-round
+                                   (recur crs-to-try-rest)))))]
+          (or ?final-round
               (->round-info x cr))))))
 
 (defn* ^:memoizing ->round-info
