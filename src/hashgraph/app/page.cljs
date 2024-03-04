@@ -435,7 +435,8 @@
   []
   (let [[behind-evt-infos> played-evt-infos> rewinded-evt-infos>] (rum/react *rendered-evt-infos)]
     [:div#viz
-     [:svg#render {(if hga-view/view-mode-horizontal? :width :height) (hga-view/evt->viz-height (-> played-evt-infos> first :event-info/event))
+     [:svg#render {(if hga-view/view-mode-horizontal? :width :height) (or (rum/react hga-state/*overide-viz-height)
+                                                                          (hga-view/evt->viz-height (-> played-evt-infos> first :event-info/event)))
                    (if hga-view/view-mode-horizontal? :height :width) hga-view/viz-x-span}
       [:g.events-view
        (for [evt-info rewinded-evt-infos>]

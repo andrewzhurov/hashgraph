@@ -16,6 +16,8 @@
 (defonce *show-stake-map? (atom false))
 (defonce *show-votes? (atom false))
 
+(defonce *overide-viz-height (atom nil))
+
 (defonce *just-played<   (atom '()))
 (defonce *just-rewinded> (atom '()))
 

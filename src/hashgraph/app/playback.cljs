@@ -225,11 +225,14 @@
                         new)
                (play!))))
 
-(defn play-to-end! []
-  (let [last-evt? (or (last (:rewinded< @*playback))
-                      (last (:played< @*playback)))]
-    (when last-evt?
-      (viz-scroll-to-event! last-evt?))))
+
+(defn play-all! []
+  (when-let [last-evt (or (last (:rewinded< @*playback))
+                          (last (:played< @*playback)))]
+    (let [to-viz-t (-> last-evt hga-view/evt->y)]
+      (reset! hga-state/*overide-viz-height (+ to-viz-t hga-view/load-area-size hga-view/after-viz-buffer-size))
+      (js/setTimeout #(viz-scroll-to-event! last-evt) 300)
+      (js/setTimeout #(reset! hga-state/*overide-viz-height nil) 3000))))
 
 (def playback-controls
   [#_#_{:description "Load hashgraph playback from disk"
@@ -271,7 +274,7 @@
    {:id          :play-all
     :description "Set playback position to end"
     :short       (hga-icons/icon :solid :forward-fast)
-    ;; :action      play-to-end!
+    :action      play-all!
     :shortcut    #{:ctrl :shift :->}}])
 
 (def playback-controls-styles
