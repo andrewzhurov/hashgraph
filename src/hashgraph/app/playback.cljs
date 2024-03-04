@@ -309,11 +309,9 @@
       :justify-content :center
       :align-items     :center}
      [:svg {:transition (t :color 400)}]
-     [:&.able
-      [:svg {:cursor :pointer}]]
-     [(gs/& (gs/not :.able))
-      [:svg {:color          "lightgray !important"
-             :pointer-events :default}]]]]])
+     [:&.able {:cursor :pointer}]
+     [(gs/& (gs/not :.able)) {:pointer-events :none}
+      [:svg {:color "lightgray !important"}]]]]])
 
 (reg-styles! ::playback-controls playback-controls-styles)
 
