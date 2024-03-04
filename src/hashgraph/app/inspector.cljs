@@ -265,15 +265,16 @@
 (def ^:dynamic *inspectable-nested?* false)
 (def ^:dynamic *inspectable-nested-depth* nil)
 
-(defn inspectable [el & [{:keys [accentable? nested? nested-depth passive? in-view? path ->inspected? ->accented?]
-                          :or   {accentable?  true
-                                 nested?      false ;; on-mouse-leave does not always work, leading to inspectables hanging active
-                                 passive?     false
-                                 in-view?     true
-                                 ->inspected? (fn [ips el] (->in ips el))
-                                 ->accented?  ->accented?*
-                                 ;; path     []
-                                 } :as opts}]]
+(defn inspectable [el & [{:keys    [accentable? nested? nested-depth passive? in-view? path ->inspected? ->accented? from-tutorial?]
+                          :or      {accentable?    true
+                                    nested?        false ;; on-mouse-leave does not always work, leading to inspectables hanging active
+                                    passive?       false
+                                    in-view?       true
+                                    ->inspected?   (fn [ips el] (->in ips el))
+                                    ->accented?    ->accented?*
+                                    from-tutorial? false
+                                    ;; path     []
+                                    } :as opts}]]
   (when in-view?
     (let [analysis? (rum/react *analysis?)]
       (cond-> {:class (cond-> ["inspectable"
@@ -299,11 +300,13 @@
                                       (when-not nested? (.stopPropagation %))
 
                                       ;; TODO support for nested?
-                                      (if (kb-key? enhance-key)
-                                        (toggle-inspect! el)
-                                        (let [inspected? (->in @*inspected-with-peeked el)]
-                                          (inspected-flush!)
-                                          (when-not (l inspected?) (inspect! el)))))))))))
+                                      (when (or hga-view/view-mode-horizontal?
+                                                from-tutorial?)
+                                        (if (kb-key? enhance-key)
+                                          (toggle-inspect! el)
+                                          (let [inspected? (->in @*inspected el)]
+                                            (inspected-flush!)
+                                            (when-not inspected? (inspect! el))))))))))))
 
 #_#_
 (def inspectable-opts-defaults
