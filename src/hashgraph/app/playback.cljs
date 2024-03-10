@@ -239,12 +239,12 @@
 (def *rewind-able?
   (rum/derived-atom [*played<] ::derive-rewind-able?
     (fn [played<]
-      (not (empty? (l played<))))))
+      (not (empty? played<)))))
 
 (def *play-all-able?
   (rum/derived-atom [*rewinded<] ::derive-rewind-able?
     (fn [rewinded<]
-      (not (empty? (l rewinded<))))))
+      (not (empty? rewinded<)))))
 
 (def playback-controls
   [#_#_{:description "Load hashgraph playback from disk"
