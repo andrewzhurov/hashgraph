@@ -83,8 +83,7 @@ Use a class to scale, like .scale-2x on root flame trace.
 As there can be > 1k elements, showing them eagerly is not needed and damm not performant.
 *** only useful for dev build with a ton of traces or memos
 **** so won't be of that much use if dev version is not deployed
-
-
+** TODO optionally, use transients more
 * DONE fix inspector
 * DONE pass top evt and not witness
 * DONE fix stuck on 3rd round
@@ -108,51 +107,51 @@ As there can be > 1k elements, showing them eagerly is not needed and damm not p
 * CANCELLED maybe show stake as member's shirt
 Shown intersity of background color instead
 ** TODO make it inspectable
-* TODO ready viz by 18th February, deploy and get feedback
-* TODO perhaps layout viz horizontaly on wide displays
+* DONE perhaps layout viz horizontaly on wide displays
 ** DONE horizontal view
-** TODO select view mode based on screen resolution
-** TODO controls to switch between horizontal/vertical mode
-* TODO animate received events
-* TODO add explanation on first appearance of novel algorithm behaviour
+** DONE select view mode based on screen resolution
+** DONE controls to switch between horizontal/vertical mode
+* DONE animate received events
+* DONE add explanation on first appearance of novel algorithm behaviour
 * TODO playback controls
 ** DONE sync with scroll
-** TODO playback one event
-** TODO rewind back on scroll up
+** DONE playback one event
+** DONE rewind back on scroll up
 ** TODO freeze to not rewind on scroll
+** TODO fix play-all
 * CANCELLED starting position to issue one event
 Starting position is an intro section, event's are issued as user scrolls to the viz section.
 * TODO pretty design
-** TODO perhaps intro section
-** TODO layout
+** DONE perhaps intro section
+** DONE layout
 ** TODO background
 * DONE buffer more events ahead-of-time on idle, so it's snappier to viz them
-* TODO test on Firefox
+* DONE test on Firefox
 * TODO test on Safari
-* TODO test on mobile
+* DONE test on mobile
 * TODO test on high res
 * DONE fix received events popping
 * DONE perhaps untie transitions from rendered events
 Now transition's engine is calculating all transitions, react components subscribe to the view-state they're interested in.
-* TODO fix stuck round
+* DONE fix stuck round
 That's perhaps due to dirty mem lookup.
 * TODO better peek viz
 ** TODO pretty scale
-** TODO fix dimming of votes
-* TODO instead of opacity use lightened color for stake map
-* TODO more animation
-** TODO witness
-** TODO round
-** TODO stake map
-** TODO votes
-* TODO cleanup html
+** DONE fix dimming of votes
+* CANCELLED instead of opacity use lightened color for stake map
+Tried with garden utils. Ended up being costly.
+* DONE more animation
+** DONE witness
+** DONE round
+** DONE stake map
+** DONE votes
+* DONE cleanup html
 * CANCELLED received events may have the same x y, not desired
 No more a problem, since received events form a blockchain viz now.
-* TODO hardly reachable members may issue it's stale event, which will make refs look not pretty
+* DONE hardly reachable members may issue it's stale event, which will make refs look not pretty
 [[~/notes/org-roam/store/sha256/cba97c7bda1f19a7835ebf4c531f784986ce1befb32492c3d3e4638238490e89]]
-* maybe lookup from mem as goog.object will be faster than (transient (hash-map))
+* CANCELLED maybe lookup from mem as goog.object will be faster than (transient (hash-map))
 It's about the same speed, be it js-obj is a bit faster
-** TODO maybe switch mem to js-obj by args hash
 * DONE switch mem warmup to loop with recur
 * DONE make inspector to fit the layout
 It has 1/3 of a dimension.
@@ -184,9 +183,11 @@ Ok for now. No good solutions found.
 ***** SOLUTION catch scroll events, stop propagation
 * TODO make algorithm understandable
 ** TODO capture in data the reason round increases
+*** DONE Perhaps it's better to perform that ad-hoc, when user wishes to inspect.
+Thus algo can stay lean and fast.
 ** TODO capture in data the reason of becoming a witness
 * DONE what goes on the home section?
-** option1
+** DONE option1
 *** problem definition - conflicting transactions
 **** solution - total order, async byzantine
 ***** method - hashgraph
@@ -208,10 +209,11 @@ It's all there's to it, see for yourself ->
 ** DONE tutors get cut height-wise
 ** DONE not inspected on click on "seen Charlie's event"
 ** TODO >| does not scroll to next
-Still reproduces?
-** TODO >>| does nothing
+Still reproduces? Happens on mobile.
+** DONE >>| does nothing
 ** TODO |<< transitions are slowpoke
-** TODO arrow on home may not be an intuitive action to scroll
+** DONE arrow on home may not be an intuitive action to scroll
+Now it scrolls once.
 ** TODO Ctrl+hover may not be intuitive
 ** TODO may not be intuitive to hover over text
 ** TODO stake change _from_ _to_ may not be intuitive
@@ -224,7 +226,9 @@ Can be done by deriving on-screen-y position on tutor mount, adjusting it to be 
 ** TODO Problem: user may inspect some stuff and move on
 Leaving the viz dimmed.
 *** Solution: perhaps dim only on peek & highlight on inspect
+*** DONE somewhat fixed by dropping selected from tutors stuff when that tutor hides
 ** TODO Problem: dragging scrollbar results in jittery scroll
+Observed on somewhat old Chromium. On new version it's okay.
 *** Solution: Perhaps just switch to a custom/third-party scroll/scrollbar implementation.
 Also will be easier to solve to auto-playback stop by detecting custom scroll from the user-issued one.
 * More
@@ -247,7 +251,15 @@ Whereas we need to clarify that it's done based on the hashgraph a member has.
 ** TODO dynamic poor connectivity
 ** DONE perhaps Shift+click to add to inspected, plain click to set inspected
 ** TODO stop auto-scroll on manual scroll
-
+** TODO fix gossip to gossip to one random member
+*** TODO what if member's unreachable?
+**** perhaps to broadcast to another
+*** TODO what if member receives it but does not include in their DAG?
+**** we'll have diminishing amount of gossip, eventually reaching 0
+**** perhaps wrap event in message with address
+*** TODO what if member cheats by accepting an event that's been sent to someone else?
+**** E.g., Bob sends an event to Charlie, but Charlie selects some event he doesn't know from Bob's event, but not the Bob's event.
+**** perhaps wrap event in message with address
 * objectives
 ** understand the algo to see how it can be applied in NG
 ** to make algorithm understandable
@@ -295,7 +307,7 @@ Whereas we need to clarify that it's done based on the hashgraph a member has.
 * possible further work
 ** switch to garden color data model
 *** add color viz to inspector
-** make algorithm viz mesmerizing
+** DONE make algorithm viz mesmerizing
 ** make interactive learning
 *** in form of a saper game
 **** with progress saved
