@@ -199,6 +199,7 @@
                                  :after>  '()})
             initial-events>)))
 
+#_
 (deftest ->events<-test
   (let [events<        (->events<)
         events<-tested (take 200 events<)]

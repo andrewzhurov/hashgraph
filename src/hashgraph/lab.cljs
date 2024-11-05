@@ -1,6 +1,6 @@
 (ns hashgraph.lab
   "A place to test the universe to get insight. A playground."
-  (:require [hashgraph.utils.core :refer [*->time*] :refer-macros [timed timing] :as utils]
+  (:require [hashgraph.utils.core :refer [*->time*] :refer-macros [timed timing l] :as utils]
             [hashgraph.app.playback :as hga-playback]
             [goog.object :as gobject]
             [goog.array]
@@ -1146,3 +1146,127 @@ identical?
 #_
 (do (def next-events (drop 10 (or next-events (->events))))
     (take 10 next-events))
+
+
+
+
+
+(+ 2 (* 2 2))
+(conj (conj [] 1) 2)
+(-> []
+    (conj 1)
+    (conj 2))
+
+(def user-id->user-profile
+  {:alice   {:user-name "Alice"
+             :age       20
+             :pets      #{:hamster :dog}}
+   :bob     {:user-name "Bob"
+             :age       25
+             :pets      #{:cat :dog :pony :spider}}
+   :charlie {:user-name "Charlie"
+             :age       30
+             :pets      #{:fish :dog}}})
+
+(reduce (fn [acc [user-id {:keys [pets]}]]
+          (reduce (fn [acc2 pet]
+                    (update acc2 pet conj user-id))
+                  acc
+                  pets))
+        {}
+        user-id->user-profile)
+
+(for [coll [[1] [2 2] [3 3 3]]
+      el   coll]
+  el)
+
+(if true
+  1
+  2)
+
+(->> (range 10)
+     (map inc)
+     (filter even?);
+     (drop 2)
+     (take 2)
+     (reduce +))
+
+
+(->> (for [[user-id user-profile] user-id->user-profile
+           pet                    (:pets user-profile)]
+       [pet user-id])
+     (reduce (fn [acc [pet user-id]]
+               (update acc pet conj user-id))
+             {}))
+
+(->> user-id->user-profile
+     (map (fn [[user-id {:keys [pets]}]]
+            (->> pets
+                 (map (fn [pet] [pet user-id]))
+                 (into {}))))
+     (apply merge-with (fn [v1 v2] (flatten [v1 v2]))))
+
+
+(merge {:a 1
+        :b 2}
+       {:a 2
+        :c 3})
+
+
+(-> {}
+    (assoc :a 1)
+    (assoc :a 2))
+{:dog [:alice :bob]}
+(conj '(0) 1)
+(-> {:a '(0)}
+    (update :a conj 1))
+
+(-> user-id->user-profile
+    (assoc )
+    (update-in [:alice :age] inc)
+    (select-keys [:bob :charlie]))
+(->> [1 2 3]
+     (reverse)
+     (map inc))
+
+(->> user-id->user-profile
+     (map (fn [[user-id user-profile]]
+            [user-id (update user-profile :age inc)]))
+     (into {}))
+(into {} [[1 1] [2 2]])
+(into [1 2 3] [4 5 6])
+(into '(1 2 3) [4 5 6])
+(conj {} [1 2])
+
+(map (fn [el] el)
+     (reverse [1 2 3]))
+
+
+#_
+(cljs.pprint/pprint
+ (macroexpand
+  '(defnml my-fn
+     "docstring"
+     ([a] (reduce + (range 1000000)) *mem*))))
+#_
+(do
+  (let [m-tr (transient (hash-map))
+        n    10000]
+    (doall (map #(assoc! m-tr % %) (range 0 n)))
+    (time (doall (map #(get m-tr %) (range 0 n))))
+    1)
+
+  (let [m-tr (hash-map)
+        n    10000]
+    (doall (map #(assoc m-tr % %) (range 0 n)))
+    (time (doall (map #(get m-tr %) (range 0 n))))
+    1))
+
+
+#_
+(let [am (array-map)]
+  (->> (reduce (fn [am-acc el] (apply array-map (-> (vec (flatten (seq am-acc)))
+                                                    (conj el)
+                                                    (conj el))))
+               am [:a :b 3 4 :c :d])
+       (map println)))

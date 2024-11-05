@@ -26,6 +26,7 @@
 (defmacro js-map? [maybe-js-map]
   `(identical? js/Map (type ~maybe-js-map)))
 
+
 (defmacro get [?js-map key]
   `(let [?js-map# ~?js-map]
      (when ?js-map#
@@ -75,6 +76,18 @@
     `(let [?js-map# ~?js-map]
        (assoc! ?js-map# ~k (update-in! (get ?js-map# ~k) ~rest-ks ~with ~@args)))))
 
+
+(defmacro get! [?js-map key default]
+  `(if-let [res# (get ~?js-map ~key)]
+     res#
+     (let [default# ~default]
+       (do (assoc! ~?js-map ~key default#)
+           default#))))
+
+(defmacro get-in! [?js-map [k & rest-ks] default]
+  (if (clojure.core/empty? rest-ks)
+    `(get! ~?js-map ~k ~default)
+    `(get-in! (get! ~?js-map ~k (empty-js-map)) ~rest-ks ~default)))
 
 (defmacro empty? [js-map]
   `(zero? (.-size ~js-map)))

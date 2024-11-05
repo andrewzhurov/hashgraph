@@ -22,13 +22,12 @@
 ;; "Gregory" "Henry" "Ivan" "Jamie" "Kate" "Lesly"
 ;; "Mark" "Nora" "Omar" "Pavel" "Quinn" "Rob"
 
-(def names ["Alice" "Bob" "Charlie" "Dean" "Elon" ;; "Frank"
-            ;; "Gregory" "Henry" ;; "Ivan" "Jamie" "Kate" "Lesly"
-            ;; "Mark" "Nora" "Omar" "Pavel" "Quinn" "Rob"
-            ])
-(def names-count (count names))
+;; (def names ["Alice" "Bob" "Charlie" "Dean" "Elon" ;; "Frank"
+;;             ;; "Gregory" "Henry" ;; "Ivan" "Jamie" "Kate" "Lesly"
+;;             ;; "Mark" "Nora" "Omar" "Pavel" "Quinn" "Rob"
+;;             ])
+;; (def names-count (count names))
 
-(not= -1 (-indexOf male-names "Charlie"))
 
 [1 [2 3 4 5 6 7 8 9 10] 11]
 
@@ -96,47 +95,52 @@
 
 ;; initial members count
 (def initial-members-count 3 #_(count names))
-(def people
-  (->> names
-       (into [] (map-indexed
-                 (fn [idx n]
-                   {:member/idx  idx
-                    :member/name n
-                    :member/gender (cond (not= -1 (-indexOf male-names n)) :male
-                                         (not= -1 (-indexOf female-names n)) :female
-                                         :else :unknown)
-                    :member/color-rgb (get palette1 idx)
-                    #_(-> (rgb->hsl (rgb 255 0 0))
-                        (rotate-hue (-> 360
-                                        (/ (count names))
-                                        (* idx)))
+(defn init-members! [creators]
+  (def names creators)
+  (def names-count (count names))
 
-                        #_(gc/scale-saturation 100)
-                        #_(gc/saturate 100)
-                        #_(gc/scale-alpha -100)
-                        #_(gc/scale-lightness -10)
-                        (gc/darken 7)
-                        (hsl->rgb)
-                        ((juxt :red :green :blue)))
-                    #_(get colors idx)
-                    #_(let [color-position (-> (+ 255 255 255)
-                                             (/ (+ 2 (count names)))
-                                             (* idx))
-                          red            (min 255 color-position)
-                          green          (-> (min (* 255 2) color-position)
-                                             (- 255))
-                          blue           (-> (min (* 255 3) color-position)
-                                             (- 255 255))]
-                      [red green blue])})))))
+  (def members
+    (->> creators
+         (into [] (map-indexed
+                   (fn [idx n]
+                     {:member/idx       idx
+                      :member/name      n
+                      :member/gender    (cond (not= -1 (-indexOf male-names n))   :male
+                                              (not= -1 (-indexOf female-names n)) :female
+                                              :else                               :unknown)
+                      :member/color-rgb (get palette1 idx)
+                      #_                (-> (rgb->hsl (rgb 255 0 0))
+                            (rotate-hue (-> 360
+                                            (/ (count names))
+                                            (* idx)))
 
-(def member-name->person
-  (->> people
-       (mapcat (fn [person] [(:member/name person) person]))
-       (apply array-map)))
+                            #_(gc/scale-saturation 100)
+                            #_(gc/saturate 100)
+                            #_(gc/scale-alpha -100)
+                            #_(gc/scale-lightness -10)
+                            (gc/darken 7)
+                            (hsl->rgb)
+                            ((juxt :red :green :blue)))
+                      #_ (get colors idx)
+                      #_ (let [color-position (-> (+ 255 255 255)
+                                                  (/ (+ 2 (count names)))
+                                                  (* idx))
+                               red            (min 255 color-position)
+                               green          (-> (min (* 255 2) color-position)
+                                                  (- 255))
+                               blue           (-> (min (* 255 3) color-position)
+                                                  (- 255 255))]
+                           [red green blue])})))))
+
+  (def member-name->person
+    (->> members
+         (mapcat (fn [person] [(:member/name person) person]))
+         (apply array-map))))
+
 
 ;; initial members
-(def initial-member-names
-  [(first names) (nth names 2) (last names)]
+(def initial-member-names ["Alice" "Bob" "Carol"] ;; not in use for KERI demo, here just so it compiles
+  #_[(first names) (nth names 2) (last names)] ;; been that
   #_[(nth people 0)
      (nth people 5)
      (nth people 10)])

@@ -2,7 +2,7 @@
   (:require
    [rum.core :as rum]
    [hashgraph.app.view :as hga-view]
-   [hashgraph.utils.core :refer [log!] :refer-macros [l letl] :as utils]))
+   [hashgraph.utils.core :refer [log! hash= hashes=] :refer-macros [l letl] :as utils]))
 
 (def render-always-mixin
   {:after-render (fn [state] (rum/request-render (:rum/react-component state)) state)})
@@ -108,7 +108,7 @@
   {:should-update (fn [old-state new-state]
                     (let [old-args (:rum/args old-state)
                           new-args (:rum/args new-state)]
-                      (utils/hashes= old-args new-args)))})
+                      (not (hashes= old-args new-args))))})
 
 (rum/defc static-by-hashes-testee-comp <
   static-by-hashes
@@ -136,11 +136,11 @@
 (def key-fn-by-hash {:key-fn (fn [arg] (-hash arg))})
 (def static-by-hash {:should-update (fn [old-state new-state]
                                       #_(log! [:should-update] {:event         (:event-info/event (first (:rum/args old-state)))
-                                                              :should-update (not= (-hash (first (:rum/args old-state)))
-                                                                                   (-hash (first (:rum/args new-state))))
-                                                              :old-hash      (-hash (first (:rum/args old-state)))
-                                                              :new-hash      (-hash (first (:rum/args new-state)))
-                                                              :old-args      (first (:rum/args old-state))
-                                                              :new-args      (first (:rum/args new-state))})
-                                      (not= (-hash (first (:rum/args old-state)))
-                                            (-hash (first (:rum/args new-state)))))})
+                                                                :should-update (not= (-hash (first (:rum/args old-state)))
+                                                                                     (-hash (first (:rum/args new-state))))
+                                                                :old-hash      (-hash (first (:rum/args old-state)))
+                                                                :new-hash      (-hash (first (:rum/args new-state)))
+                                                                :old-args      (first (:rum/args old-state))
+                                                                :new-args      (first (:rum/args new-state))})
+                                      (not (hash= (first (:rum/args old-state))
+                                                  (first (:rum/args new-state)))))})

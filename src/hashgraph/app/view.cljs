@@ -1,8 +1,10 @@
 (ns hashgraph.app.view
-  (:require [cljs.math :refer [floor ceil]]
+  (:require [hashgraph.main :as hg]
+            [hashgraph.utils.core :refer [log!] :refer-macros [l letl] :as utils]
+
+            [cljs.math :refer [floor ceil]]
             [clojure.test :refer [deftest testing is are]]
-            [hashgraph.members :as hg-members]
-            [hashgraph.utils.core :refer [log!] :refer-macros [l letl] :as utils]))
+            [clojure.string]))
 
 (def dlt-link "https://hedera.com/learning/distributed-ledger-technologies/what-are-distributed-ledger-technologies-dlts")
 (def virtual-voting-link "https://docs.hedera.com/hedera/core-concepts/hashgraph-consensus-algorithms/virtual-voting")
@@ -27,14 +29,16 @@
 
 (def window-height js/window.innerHeight)
 (def window-width js/window.innerWidth)
-(def view-mode-horizontal? (> window-width window-height))
+(def ^:dynamic view-mode-horizontal? false #_(> window-width window-height)) ;; is landscape? i.e., isn't portrait? https://www.webmound.com/detect-device-orientation-change-javascript/
 (def window-y-span (if view-mode-horizontal? window-width window-height))
 (def window-x-span (if view-mode-horizontal? window-height window-width))
 
-(def viz-x-span (if view-mode-horizontal?
-                (/ window-height 3)
-                (min (-> window-width (* (/ 2 3)))
-                     (-> window-height (* (/ 2 6))))))
+(def ^:dynamic viz-x-span
+  (if view-mode-horizontal?
+    (/ window-height 3)
+    200
+    #_(min (-> window-width (* (/ 2 3)))
+         (-> window-height (* (/ 2 6))))))
 (def viz-margin-x (-> window-x-span (- viz-x-span) (/ 2)))
 
 (def tutorial-mobile-x-overflow (min 30
@@ -42,7 +46,7 @@
 (def tutorial-mobile-x-margin (-> window-x-span (- viz-x-span) (/ 2) (- tutorial-mobile-x-overflow)))
 (def tutorial-mobile-x-span (-> viz-x-span (+ (* tutorial-mobile-x-margin 2))))
 
-(def hgs-size (/ viz-x-span (count hg-members/names)))
+(def hgs-size     (/ viz-x-span 3 #_(count hg-members/names)))
 (def evt-s        (-> hgs-size (/ 3) ceil-even))
 (def hgs-padding  (-> hgs-size (- evt-s) (/ 2)))
 
@@ -81,12 +85,12 @@
 
 (def members-height 66 #_(+ members-padding-y avatar-size members-padding-y))
 (def members-padding-y (-> members-height (- avatar-size) (/ 2)))
-(def members-background-color :transparent #_"rgba(255,255,255,0.5)")
+(def members-background-color "rgba(255,255,255,0.9)")
 (def member-name-font-size 18)
 
 (def members-y-start (if view-mode-horizontal?
                        0
-                       (+ control-margin control-size control-margin)))
+                       0 #_(+ control-margin control-size control-margin)))
 (def members-y-end (+ members-y-start members-height))
 
 
@@ -95,25 +99,24 @@
                       (-> tutorial-size
                           (/ 2)
                           (+ tutorial-margin))
-                      evt-s #_(+ sp-padding evt-s)))
-(def after-viz-buffer-size (* 35 evt-offset))
+                      (+ 2 sp-padding evt-s)))
 (def playback-size (ceil (-> window-y-span
                              (- members-y-end load-area-size))))
 
 (def wit-r (* 2 evt-r))
 (def wit-s (* 2 wit-r))
-(def evt-initial-offset-y (ceil hgs-padding))
+(def evt-offset-y (+ #_(ceil hgs-padding) window-height))
 
 
 (def vote-r evt-r)
 (def vote-circumferance (* 2 js/Math.PI vote-r))
 #_(def vote-circumferance
-  (memoize
-   (fn [event]
-     (let [member (-> event hg/event->member)]
-       (-> vote-circumferance
-           (/ hg/total-stake)
-           (* (:member/stake member)))))))
+    (memoize
+     (fn [event]
+       (let [member (-> event hg/event->member)]
+         (-> vote-circumferance
+             (/ hg/total-stake)
+             (* (:member/stake member)))))))
 (def vote-stroke-width (+ vote-r vote-r))
 
 (def idx->x
@@ -122,28 +125,25 @@
         (* (+ hgs-padding evt-s hgs-padding))
         (+ hgs-padding evt-r))))
 
-(def evt->x
-  (fn [evt]
-    (-> evt :event/creator hg-members/member-name->person :member/idx idx->x)))
+;; (def max-same-depth-events 10)
+;; (def depth-idx-padding (/ sp-padding max-same-depth-events))
 
-(def t->y
-  (fn [t]
-    t))
+(defn depth->y [depth]
+  (-> depth
+      (* sp-padding)
+      (+ evt-offset-y)))
 
-(def evt->y
-  (memoize ;; over time will become slower to lookup than to calc
-   (fn [evt]
-     (-> evt
-         :event/creation-time
-         t->y
-         (+ evt-initial-offset-y)))))
+(defn evt->y [evt]
+  (-> evt
+      hg/event->depth
+      depth->y))
 
 (defn evt->viz-height [event]
-  (-> (some-> event
-              evt->y
-              (+ members-height)
-              (+ load-area-size))
-      (+ after-viz-buffer-size)))
+  (-> (or (some-> event
+                  evt->y)
+          evt-offset-y)
+      (+ load-area-size)
+      (+ members-y-end)))
 
 
 (defn ->viz-viewbox-bound-min [viz-scroll]
@@ -159,8 +159,8 @@
   (> y (->viz-viewbox-bound-max viz-scroll)))
 
 (defn ->after-viz-playback-viewbox? [y viz-scroll]
-  (let [playback-view-bound-max (+ viz-scroll playback-size)]
-    (> y playback-view-bound-max)))
+  (let [playback-view-bound-max (+ viz-scroll (l playback-size))]
+    (> y (l playback-view-bound-max))))
 
 
 (defn t [& t-descs]

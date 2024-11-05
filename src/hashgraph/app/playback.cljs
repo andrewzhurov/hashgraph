@@ -1,13 +1,10 @@
 (ns hashgraph.app.playback
   (:require-macros [hashgraph.utils.js-map :as js-map])
-  (:require [clojure.set :as set]
-            [cognitect.transit :as transit]
-            [garden.core :refer [css]]
-            [garden.units :refer [px]]
-            [garden.selectors :as gs]
-            [rum.core :as rum]
-            [hashgraph.main :as hg]
+  (:require [hashgraph.main :as hg]
             [hashgraph.members :as hg-members]
+            [hashgraph.utils.core :refer-macros [defn* l letl letp] :refer [not-neg mean] :as utils]
+            [hashgraph.utils.lazy-derived-atom :refer [lazy-derived-atom] :refer-macros [deflda]]
+
             [hashgraph.app.view :refer [t] :as hga-view]
             [hashgraph.app.styles :refer [reg-styles!]]
             [hashgraph.app.icons :as hga-icons]
@@ -16,11 +13,17 @@
             [hashgraph.app.keyboard :as hga-keyboard]
             [hashgraph.app.transitions :refer [tt] :as hga-transitions]
             [hashgraph.app.utils :as hga-utils]
-            [hashgraph.utils.lazy-derived-atom :refer [lazy-derived-atom]]
             [hashgraph.app.inspector]
-            [hashgraph.utils.core :refer-macros [defn* l letl letp] :as utils]
+
+            [garden.core :refer [css]]
+            [garden.units :refer [px]]
+            [garden.selectors :as gs]
+            [rum.core :as rum]
             [taoensso.tufte :refer [profile p]]
-            [cljs.core :as core]))
+            [cognitect.transit :as transit]
+            [cljs.core :as core]
+            [clojure.set :as set]
+            [clojure.test :refer [deftest testing is run-tests]]))
 
 
 ;; Playback state is kept explicitly rather than being a derived view,
@@ -37,21 +40,28 @@
 ;;            These events are also rendered, in order to display rewinding transition.
 ;;            Even though rewinded events are rendered,
 ;;            they do not contribute to main algorithm / they are no more present.
-(defonce ^:dynamic *left< nil)
+(defonce ^:dynamic *left< (atom []))
 
-(defonce *playback (atom {:behind>   '()   ;; on play we'll read from the first when putting to played V
-                          :played<   '()   ;; on play we'll read from the first when putting to behind ^
-                          :rewinded< '() ;; on play we'll read from the first when putting to played ^
-                          }))
-
+(defonce playback-init {:behind>   '()   ;; on play we'll read from the first when putting to played V
+                        :played<   '()   ;; on play we'll read from the first when putting to behind ^
+                        :rewinded< '() ;; on play we'll read from the first when putting to played ^
+                        })
+(defonce *playback (atom playback-init))
+#_(js/console.log @*playback)
 (defonce *behind>   (rum/cursor *playback :behind>))
 (defonce *played<   (rum/cursor *playback :played<))
 (defonce *rewinded< (rum/cursor *playback :rewinded<))
 
+
+
 ;; As events viz is scrolled forward, advancing time, more events get "created".
 ;; As events viz is scrolled backwards, time's rewinded.
 
-(defn sync-playback-with-viz-scroll! []
+#_#_
+(defn stop-sync-playback-with-viz-scroll! []
+  (remove-watch hga-state/*viz-scroll ::sync-playback-with-scroll))
+
+(defn start-sync-playback-with-viz-scroll! []
   (add-watch hga-state/*viz-scroll ::sync-playback-with-scroll
              (fn [_ _ old-viz-scroll new-viz-scroll]
                (let [delta                               (- new-viz-scroll old-viz-scroll)
@@ -81,18 +91,7 @@
                                   :rewinded< '()})
                          (reset! *left< new-left<))))
 
-                   (let [played>                  (reverse played<)
-                         [to-play> new-behind>]   (->> behind>     (split-with #(not (hga-view/->before-viz-viewbox? (hga-view/evt->y %) new-viz-scroll))))
-                         new-played>              (concat played> to-play>)
-                         [to-rewind> new-played>] (->> new-played> (split-with #(hga-view/->after-viz-playback-viewbox? (hga-view/evt->y %) new-viz-scroll)))
-                         new-just-rewinded>       to-rewind>
-                         new-rewinded<            (into rewinded< to-rewind>)
-                         new-played<              (reverse new-played>)]
-                     (reset! hga-state/*just-rewinded> new-just-rewinded>)
-                     (reset! *playback
-                             {:behind>   new-behind>
-                              :played<   new-played<
-                              :rewinded< new-rewinded<})))))))
+                   )))))
 
 ;; Events are crafted as an infinite lazy sequence,
 ;; elements are created as it's being read.
@@ -124,7 +123,7 @@
 (defn init-playback! [events<]
   (set! *left< (atom events<))
   (add-watch *left< ::resolve-next-left< (fn [_ _ _ left<] (take 10 left<)))
-  (sync-playback-with-viz-scroll!)
+  (start-sync-playback-with-viz-scroll!)
   (resolve-more-events-on-idle! events<))
 
 
@@ -191,11 +190,12 @@
 
 (defn viz-scroll-to-event! [evt]
   (let [evt-pos            (hga-view/evt->y evt)
-        evt-viz-scroll-pos (- evt-pos hga-view/playback-size)]
-    (@hga-state/*viz-scroll! evt-viz-scroll-pos :smooth? true)))
+        evt-viz-scroll-pos (- (l evt-pos) hga-view/playback-size)]
+    (@hga-state/*viz-scroll! (l evt-viz-scroll-pos) :smooth? true)))
 
-(defn rewind-all! []
-  (@hga-state/*viz-scroll! (- hga-view/window-y-span) :smooth? true))
+(defn rewind-all! [& {:keys [smooth?]
+                      :or {smooth? true}}]
+  (@hga-state/*viz-scroll! (- hga-view/window-y-span) :smooth? smooth))
 
 (defn rewind-once! []
   (if-let [prev-evt (second (reverse @*played<))]
@@ -232,9 +232,9 @@
   (when-let [last-evt (or (last (:rewinded< @*playback))
                           (last (:played< @*playback)))]
     (let [to-viz-t (-> last-evt hga-view/evt->y)]
-      (reset! hga-state/*overide-viz-height (+ to-viz-t hga-view/load-area-size hga-view/after-viz-buffer-size))
+      (reset! hga-state/*override-viz-height (+ to-viz-t hga-view/load-area-size hga-view/after-viz-buffer-size))
       (js/setTimeout #(viz-scroll-to-event! last-evt) 300)
-      (js/setTimeout #(reset! hga-state/*overide-viz-height nil) 3000))))
+      (js/setTimeout #(reset! hga-state/*override-viz-height nil) 3000))))
 
 (def *rewind-able?
   (rum/derived-atom [*played<] ::derive-rewind-able?
@@ -337,3 +337,56 @@
                                :title    description
                                :on-click action}
         (or icon short)]))])
+
+(deflda *tip [*played<] #(some-> % reverse last))
+(deflda *cr [*tip] #(some-> % hg/->concluded-round))
+(deflda *db [*cr] #(some-> % hg/cr->db))
+(deflda *member-aids [*db] #(some-> % :member-aid->did-peers keys set))
+
+(defn* ^:memoizing aid->controlling-aids [aid]
+  (-> aid l :key-event/anchors first :aid/controlling-aids l))
+
+(defn* ^:memoizing aid->controlling-aid-hierarchy-sorted [aid]
+  (if-let [controlling-aids (-> aid aid->controlling-aids)]
+    (->> controlling-aids
+         (sort-by hga-state/aid->creation-time)
+         (mapv aid->controlling-aid-hierarchy-sorted))
+    aid))
+
+(deftest aid->controlling-aid-hierarchy-sorted-test
+  (let [aid-a1 {:key-event/anchors [{:aid/creation-time 1}]}
+        aid-a2 {:key-event/anchors [{:aid/creation-time 2}]}
+        aid-a  {:key-event/anchors [{:aid/creation-time    3
+                                     :aid/controlling-aids #{aid-a1 aid-a2}}]}
+        aid-b1 {:key-event/anchors [{:aid/creation-time 2}]}
+        aid-b2 {:key-event/anchors [{:aid/creation-time 3}]}
+        aid-b  {:key-event/anchors [{:aid/creation-time    4
+                                     :aid/controlling-aids #{aid-b1 aid-b2}}]}
+        aid-ab {:key-event/anchors [{:aid/creation-time    5
+                                     :aid/controlling-aids #{aid-a aid-b}}]}]
+    (is (= aid-a1 (aid->controlling-aid-hierarchy-sorted aid-a1)))
+    (is (= [aid-a1 aid-a2] (aid->controlling-aid-hierarchy-sorted aid-a)))
+    (is (= [[aid-a1 aid-a2] [aid-b1 aid-b2]] (aid->controlling-aid-hierarchy-sorted aid-ab)))))
+
+#_
+(run-tests)
+
+(defn* ^:memoizing member-aids->controlling-aid-hierarchy-sorted [member-aids]
+  (->> member-aids
+       (sort-by hga-state/aid->creation-time)
+       (mapv aid->controlling-aid-hierarchy-sorted)))
+
+(deflda *controlling-aid-hierarchy-sorted [*member-aids] member-aids->controlling-aid-hierarchy-sorted)
+#_(def *root-aids-sorted (lazy-derived-atom [*controlling-aid-hierarchy-sorted] (comp vec flatten)))
+#_(def *root-aid->idx (lazy-derived-atom [*root-aids-sorted]
+                        (fn [root-aids-sorted]
+                          (->> root-aids-sorted
+                               (map-indexed (fn [idx root-aid]
+                                              [root-aid idx]))
+                               (into {})))))
+
+(deflda *viz-width [*root-aids-sorted]
+  (fn [root-aids-sorted]
+    (-> root-aids-sorted
+        count
+        (* hga-view/hgs-size))))

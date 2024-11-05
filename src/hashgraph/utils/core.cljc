@@ -1,9 +1,12 @@
 (ns hashgraph.utils.core
-  #?(:cljs (:require-macros [hashgraph.utils.core :refer [l]]))
-  (:require [clojure.test :refer [deftest testing is are run-tests]]
+  #?(:cljs
+     (:require-macros [hashgraph.utils.core :refer [l]]))
+  (:require [clojure.test :refer [deftest testing is are run-test run-tests]]
             [clojure.walk]
+            [clojure.pprint :refer [pprint]]
             [taoensso.tufte :as tufte]
             [rum.core :as rum]
+            [malli.core :as m]
             #?(:cljs [cljs.analyzer :as ana])))
 #?(:clj (alias 'ana 'cljs.analyzer))
 
@@ -19,6 +22,7 @@
 (def ^:dynamic *mem* nil)
 (def ^:dynamic *from-mem* nil)
 
+(def ^:dynamic logging-enabled? true)
 (def ^:dynamic default-tracing-enabled? false)
 #?(:dev (set! default-tracing-enabled? false))
 
@@ -32,7 +36,7 @@
 (def ^:dynamic *trace-atom* nil)
 (def ^:dynamic *parent-trace-atom* nil)
 
-(def init-log {})
+(def init-log (hash-map))
 (def ^:dynamic *log (atom init-log))
 (defn log-flush! [] (reset! *log init-log))
 (def *traces (rum/cursor-in *log [:traces]))
@@ -49,12 +53,14 @@
 
 
 
-(def *id->logger (atom {}))
+(def ^:dynamic *id->logger (atom {}))
 (defn add-logger! [id logger] (swap! *id->logger assoc id logger))
-#?(:clj  (do (add-logger! :console (fn [path _with value] (println path value)))
+#?(:clj  (do (add-logger! :*log (fn [path with value] (swap! *log update-in path with value)))
+             (add-logger! :println (fn [path _with value] (println path (with-out-str (pprint value)))))
              (add-logger! :log-file (fn [path _with value] (spit "./log-file.edn" (str [path value] "\n") :append true))))
    :cljs (do (add-logger! :*log (fn [path with value] (swap! *log update-in path with value)))
-             (add-logger! :*console (fn [path with value] (js/console.log path value)))))
+             #_(add-logger! :println (fn [path with value] (println (with-out-str (pprint [path value])))))
+             (add-logger! :js/console (fn [path with value] (js/console.log path value)))))
 
 (defn log!* [path with value]
   (doseq [[_id logger] @*id->logger]
@@ -83,23 +89,14 @@
    (log!-with (->path path-or-key) (fn [_old new] new) value)
    value))
 
-
-(defmacro logged [& exprs]
-  `(let [*log-acc# (atom (hash-map))
-         result#   (binding [*log              *log-acc#
-                             *parent-log-path-logging?* false
-                             *log-path*       []]
-                     ~@exprs)]
-     [@*log-acc# result#]))
-
 (defmacro l [expr]
-  `(let [res# ~expr]
-     (log! [(quote ~expr)] res#)
-     res#))
+  (if logging-enabled?
+    `(let [res# ~expr]
+       (log! [(quote ~expr)] res#)
+       res#)
+    expr))
 
 #?(:clj (defn l! [val] (log! val)))
-
-;; is a letl macro and not a l-binds macro to make litner happy
 
 #_(defmacro log-relative [path-or-key & exprs]
   `(binding [*parent-log-path* (let [prev    (or *parent-log-path*
@@ -113,18 +110,63 @@
   `(binding [*log-path* (->path ~path-or-key)]
      ~@exprs))
 
+(defmacro logged [& exprs]
+  `(let [*log-acc# (atom (hash-map))
+         result#   (binding [*log                       *log-acc#
+                             *parent-log-path-logging?* false
+                             *log-path*                 []]
+                     ~@exprs)]
+     [@*log-acc# result#]))
+
+#_
+(defmacro l-binds
+  [binds]
+  (reduce into []
+          (for [[bind-sym bind-form] binds]
+            [bind-sym `(let [bind-res# ~bind-form]
+                         (l [~bind-sym bind-res#])
+                         bind-res#)])))
+
+;; is a letl macro and not a l-binds macro to make linter happy
 (defmacro letl
+  "Logs bindings from sym to value, under 'letl."
+  [binds & exprs]
+  (if logging-enabled?
+    `(let [[log# result#]
+           (logged
+             (let ~(->> binds
+                        (partition 2)
+                        (mapcat (fn [[to expr]] [to `(log-set! (quote ~to) ~expr)]))
+                        vec)
+               ~@exprs))]
+       (log! ['letl (quote ~binds)] log#)
+       result#)
+    `(let ~binds
+       ~@exprs)))
+
+(defmacro letl2
   "Logs bindings from sym to value."
   [binds & exprs]
-  `(let [[log# result#]
-         (logged
-          (let ~(->> binds
-                     (partition 2)
-                     (mapcat (fn [[to expr]] [to `(log-set! (quote ~to) ~expr)]))
-                     vec)
-            ~@exprs))]
-     (log! ['letl (quote ~binds)] log#)
-     result#))
+  (if logging-enabled?
+    `(let ~(->> binds
+                (partition 2)
+                (mapcat (fn [[to expr]] [to `(log-set! (quote ~to) ~expr)]))
+                vec)
+       ~@exprs)
+    `(let ~binds
+       ~@exprs)))
+
+(defmacro letlt
+  "Logs bindings from sym to value."
+  [binds & exprs]
+  (if logging-enabled?
+    `(let ~(->> binds
+                (partition 2)
+                (mapcat (fn [[to expr]] [to `(log-set! (quote ~to) (t ~expr))]))
+                vec)
+       ~@exprs)
+    `(let ~binds
+       ~@exprs)))
 
 (defmacro letp
   "Profiles bindings let bindings."
@@ -193,19 +235,35 @@
 (defn svs? [el] (or (seq? el) (vector? el) (set? el)))
 (defn flattenable? [el] (svs? el))
 (defn hash= [el1 el2] (= (hash el1) (hash el2)))
+(declare xor)
 (defn hashes= [coll1 coll2]
-  (or (not= (count coll1) (count coll2))
-      (loop [coll1-left coll1
-             coll2-left coll2]
-        (cond (empty? coll2-left)
+  (if (or (not= (count coll1) (count coll2))
+          (xor (nil? coll1) (nil? coll2)))
+    false
+    (loop [coll1-left coll1
+           coll2-left coll2]
+      (let [coll1-left-empty? (empty? coll1-left)
+            coll2-left-empty? (empty? coll2-left)]
+        (cond (and coll1-left-empty? coll2-left-empty?)
+              true
+
+              (or coll1-left-empty? coll1-left-empty?)
               false
 
               (not (hash= (first coll1-left)
                           (first coll2-left)))
-              true
+              false
 
               :else
-              (recur (rest coll1-left) (rest coll2-left))))))
+              (recur (rest coll1-left) (rest coll2-left)))))))
+
+(deftest hashes=-test
+  (is (= true (hashes= [] [])))
+  (is (= true (hashes= [{}] [{}])))
+  (is (= false (hashes= [{}] [])))
+  (is (= false (hashes= [1] [2])))
+  (is (= false (hashes= nil []))))
+#_(run-test hashes=-test)
 
 (defn flatten-all [maybe-flattenbale]
   (if-not (flattenable? maybe-flattenbale)
@@ -291,6 +349,40 @@
 
 #?(:cljs (deftest ->neighbours?-test
            (is (true? (->neighbours? [{} [1 2 3 4]] [2 3])))))
+
+
+;; (max nil 0) => 0
+;; (max 0 nil) => nil
+;; (max 1 nil) => 1
+;; ... ~_~
+;; (js/Math.max 0 nil) => 0
+;; (js/Math.max nil nil) => 0
+;; ... ~_~
+
+;; (> nil 0) => false
+;; (> 0 nil) => false ~_~
+
+(def ?a+?b->expected-max
+  (array-map
+   [nil nil] nil
+   [nil 0] 0
+   [nil 1] 1
+   [0 nil] 0
+   [1 nil] 1
+   [0 0] 0
+   [1 2] 2
+   [2 1] 2))
+
+(defn safe-max [?a ?b]
+  (cond (and (nil? ?a) (nil? ?b)) nil
+        (nil? ?a)                 ?b
+        (nil? ?b)                 ?a
+        (> ?a ?b)                 ?a
+        :else                     ?b))
+
+(deftest safe-max-test
+  (doseq [[[?a ?b] expected-max] ?a+?b->expected-max]
+    (is (= expected-max (safe-max ?a ?b)))))
 
 
 (defn merge! [m1 m2]
@@ -398,7 +490,8 @@
 #?(:clj
    (defn k->val-fn? [k] (clojure.string/starts-with? (name k) "on-")))
 
-#?(:clj (require '[hashgraph.app.inspector :refer-macros [inspectable*]]))
+;; #?(:clj (require '[hashgraph.app.inspector :refer-macros [inspectable*]]))
+#_
 (defmacro merge-attr-maps* [attr-map1 attr-map2 & rest-attr-maps]
   ;; works only on plain {} as args
   (let [merged1
@@ -433,10 +526,208 @@
     (conj ?coll el)
     (conj (set ?coll) el)))
 
+(defn conjv [?coll el]
+  (conj (or ?coll []) el))
+
 (defn rest-n [n coll]
   (if (zero? n)
     coll
     (recur (dec n) (rest coll))))
+
+(defn xor [a b]
+  (cond (and a (not b)) a
+        (and (not a) b) b))
+
+(def example-a+b->xor-res
+  {[nil nil] nil
+   [1 nil]   1
+   [nil 2]   2
+   [1 2]     nil})
+
+(deftest xor-test
+  (doseq [[[a b] xor-expected] example-a+b->xor-res]
+    (is (= xor-expected (xor a b)))))
+
+
+
+#?(:cljs
+   (do
+     (def vec1+vec2->expected-vec-difference
+       {[[] [2 3 4]]          []
+        [[1] [2 3 4]]         [1]
+        [[1 2] [2 3 4]]       [1]
+        [[2 3 4 5] [2 3 4]]   [5]
+        [[5 4 3 2 1] [2 3 4]] [5 1]})
+
+     (defn vec-difference [vec1 vec2]
+       (->> vec1
+            (reduce (fn [diff-acc vec1-el]
+                      (if (or (not= -1 (-indexOf vec2 vec1-el))
+                              (not= -1 (-indexOf diff-acc vec1-el)))
+                        diff-acc
+                        (conj diff-acc vec1-el)))
+                    [])))
+
+     (deftest vec-difference-test
+       (doseq [[[vec1 vec2] expected-vec-difference] vec1+vec2->expected-vec-difference]
+         (is (= expected-vec-difference (vec-difference vec1 vec2)))))))
+
+#?(:cljs
+   (do
+     (def vec1+vec2->expected-vec-union
+       (array-map
+        [[0] [1]] [0 1]
+        [[] [1 2]] [1 2]
+        [[1 2] []] [1 2]
+        [[1 2] [2 3]] [1 2 3]))
+
+     (m/=> vec-union [:=> [:cat vector? vector?] vector?])
+     (defn vec-union [vec1 vec2]
+       (if (empty? vec1)
+         (vec vec2)
+         (reduce (fn [vec-acc vec2-el]
+                   (if (= -1 (-indexOf vec-acc vec2-el))
+                     (conj vec-acc vec2-el)
+                     vec-acc))
+                 (vec vec1)
+                 vec2)))
+
+     (deftest vec-union-test
+       (doseq [[[vec1 vec2] expected-vec-union] vec1+vec2->expected-vec-union]
+         (is (= expected-vec-union (vec-union vec1 vec2)))))
+     (run-test vec-union-test)))
+
+(defn subvecs [v]
+  (if (-> v count (<= 1))
+    [v]
+    (conj (subvecs (-> v butlast vec)) v)))
+
+(deftest subvecs-test
+  (is (= [[1] [1 2] [1 2 3]] (subvecs [1 2 3]))))
+
+(defn not-neg [num]
+  (when-not (neg? num)
+    num))
+
+(defn indexed [index-vec item]
+  (if-let [existing-item-idx (not-neg (-indexOf index-vec item))]
+    [index-vec existing-item-idx]
+    (let [new-index-vec (conj index-vec item)]
+      [new-index-vec (-indexOf new-index-vec item)])))
+
+(deftest indexed-test
+  (is (= [[:a] 0]    (indexed [] :a)))
+  (is (= [[:a :b] 1] (indexed [:a] :b)))
+  (is (= [[:a :b] 0] (indexed [:a :b] :a)))
+  (is (= [[:a :b] 1] (indexed [:a :b] :b))))
+
+(defn mean [nums]
+  (/ (reduce + nums) (count nums)))
+
+(def median
+  (memoize
+   (fn [numbers]
+     (let [sorted-numbers (sort numbers)
+           len            (count sorted-numbers)]
+       (if (even? len)
+         (/ (+ (nth sorted-numbers (quot len 2))
+               (nth sorted-numbers (dec (quot len 2))))
+            2)
+         (nth sorted-numbers (quot len 2)))))))
+
+(defn map-vals
+  ([f] (partial map-vals f))
+  ([f m]
+   (persistent! (reduce (fn [m*-acc [m-key m-val]]
+                          (assoc! m*-acc m-key (f m-val)))
+                        (transient (hash-map))
+                        m))))
+
+(def m->map-vals-fn->expected-mapped-vals
+  {{}           {inc {}}
+   {1 1 2 2}    {identity {1 1 2 2}
+                 inc      {1 2 2 3}}
+   {1 {11 111}
+    2 {22 222}} {#(assoc % :k :v) {1 {11 111
+                                      :k :v}
+                                   2 {22 222
+                                      :k :v}}}})
+
+(deftest map-vals-test
+  (doseq [[m map-vals-fn->expected-mapped-vals] m->map-vals-fn->expected-mapped-vals]
+    (doseq [[map-vals-fn expected-mapped-vals] map-vals-fn->expected-mapped-vals]
+      (is (= expected-mapped-vals (map-vals m map-vals-fn))))))
+
+
+(defn map-keys
+  ([f] (partial map-keys f))
+  ([f m]
+   (persistent! (reduce (fn [m*-acc [m-key m-val]]
+                          (assoc! m*-acc (f m-key) m-val))
+                        (transient (hash-map))
+                        m))))
+
+(deftest map-keys-test
+  (is (= {1 1 2 2 3 3} (map-keys inc {0 1 1 2 2 3}))))
+
+
+(defn filter-map-vals
+  ([f] (partial filter-map-vals f))
+  ([f m]
+   (persistent! (reduce (fn [m*-acc [m-key m-val]]
+                          (if-let [new-val (f m-val)]
+                            (assoc! m*-acc m-key new-val)
+                            m*-acc))
+                        (transient (hash-map))
+                        m))))
+
+(deftest filter-map-vals-test
+  (is (= {:a :aa :c :cc} (filter-map-vals :key {:a {:key :aa} :b :bb :c {:key :cc} :d nil}))))
+
+
+(defn reverse-map [m]
+  (->> m
+       (reduce (fn [acc* [k v]] (assoc! acc* v k))
+               (transient (hash-map)))
+       (persistent!)))
+
+(deftest reverse-map-test
+  (is (= {1 :1 2 :2} (reverse-map {:1 1 :2 2}))))
+
+
+(defn map-prim [f coll]
+  (clojure.walk/postwalk (fn [el]
+                           (if (coll? el)
+                             el
+                             (f el)))
+                         coll))
+
+(deftest map-prim-test
+  (is (= [1 '(2 #{3 4}) ['{#{5} 6}]]
+         (map-prim inc [0 '(1 #{2 3}) ['{#{4} 5}]]))))
+
+
+
+(defmacro when-let*
+  [bindings & body]
+  (if (zero? (count bindings))
+    `(do ~@body)
+    `(clojure.core/when-let ~(vec (take 2 bindings))
+       (when-let* ~(drop 2 bindings)
+         ~@body))))
+
+(mapcat (fn [[to expr]] [to `(log-set! (quote ~to) ~expr)]))
+
+(defmacro when-letl*
+  [bindings & body]
+  (if (zero? (count bindings))
+    `(do ~@body)
+    (let [[bind expr] (take 2 bindings)]
+      `(clojure.core/when-let [~bind (log-set! (quote ~bind) ~expr)]
+         (when-letl* ~(drop 2 bindings)
+           ~@body)))))
+
+
 
 (defn fn->sorted-set-safe-comparator
   "Ensures set semantics of sorted-set are preserved."
@@ -532,6 +823,12 @@
                    took#  (cljs.core/- (cljs.core/system-time) start#)]
      [took# ret#]))
 
+(defmacro t
+  [expr]
+  `(cljs.core/let [[took# ret#] (timed ~expr)]
+     (l took#)
+     ret#))
+
 (defmacro timing
   "Wraps expr with binding for *time-start*, *->time* to fn that, when called, returns time passed as of call to the expression"
   [expr]
@@ -592,91 +889,128 @@
       (apply f cold-input)
       (recur rest-cold-inputs))))
 
+;; (defn a [])
+;; (defn a
+;;   ([] )
+;;   ([a-val]))
+
+;; (fn a [])
+;; (fn a
+;;   ([])
+;;   ([a-val]))
+
+;; (fn [])
+;; (fn
+;;   ([])
+;;   ([a-val]))
+
 (defmacro memoizing
-    "Returns memoized function over the supplied function, optionally binding mem state to mem symbol from opts."
-    [{{:keys [mem ->from-mem ->in-mem?]
-       :or   {mem        (gensym "mem")
-              ->from-mem (gensym "->from-mem")
-              ->in-mem?  (gensym "->in-mem")}} :bind
+  "Returns memoized function over the supplied function, optionally binding mem state to mem symbol from opts."
+  [{{:keys [mem ->from-mem ->in-mem?]
+     :or   {mem        (gensym "mem")
+            ->from-mem (gensym "->from-mem")
+            ->in-mem?  (gensym "->in-mem")}} :bind
 
-      :keys [only-last?
-             recur-by recur-stop] ;; be careful to not run with warmup async, will misbehave
-      }
-     fn-form]
+    :keys [def-sym
+           args->mem-k
+           only-last?
+           recur-by recur-stop] ;; be careful to not run with warmup async, will misbehave
+    :or   {args->mem-k 'cljs.core/-hash} ;; fail with 'cljs.core/hash
+    }
+   fn-form]
+  (assert (or (and (nil? recur-by) (nil? recur-stop))
+              (and (some? recur-by) (some? recur-stop))))
 
-    (assert (or (and (nil? recur-by) (nil? recur-stop))
-                (and (some? recur-by) (some? recur-stop))))
+  (let [args-sym          (gensym "args")
+        v-sym             (gensym "v")
+        from-mem-args-sym (gensym "from-mem-args")
+        skip-warmup?-sym  (gensym "skip-warmup?")
+        mem-k-sym         (gensym "mem-k")
+        named?            (symbol? (second fn-form))
+        mem-fn-sym        (if named?
+                            (second fn-form)
+                            (or def-sym (gensym "mem-fn")))
+        after-name-forms  (cond-> (rest fn-form)
+                            named? rest)
+        arity-clauses     (if (every? seq? after-name-forms)
+                            after-name-forms
+                            (let [[args & bodies] after-name-forms]
+                              `((~args ~@bodies))))]
+    `(let [~mem              ~(if only-last?
+                                `(volatile! nil)
+                                ;; in clojure it's an array may, so bashing in place no good
+                                ;; also, do we need hash-map here, given we store args as hashes anyways, js's map will do?
+                                `(transient (hash-map)))
+           ~->from-mem       (fn [~from-mem-args-sym] (get ~(if only-last? `(deref ~mem) mem)
+                                                           (~args->mem-k ~from-mem-args-sym) lookup-sentinel))
+           ~->in-mem?        (fn [in-mem-args#] (not (identical? (~->from-mem in-mem-args#) lookup-sentinel)))
+           f#                ~fn-form
+           ~skip-warmup?-sym (volatile! false)]
 
-    (let [args-sym          (gensym "args")
-          v-sym             (gensym "v")
-          from-mem-args-sym (gensym "from-mem-args")
-          skip-warmup?-sym  (gensym "skip-warmup?")
-          mem-fn-sym        (gensym "mem-fn")
-          args-hash-sym     (gensym "args-hash")]
-      `(let [~mem ~(if only-last?
-                     `(volatile! nil)
-                     `(transient (hash-map))) ;; in clojure it's an array may, so bashing in place no good
-             ~->from-mem (fn [~from-mem-args-sym] (get ~(if only-last? `(deref ~mem) mem)
-                                                       (cljs.core/-hash ~from-mem-args-sym) lookup-sentinel))
-             ~->in-mem?  (fn [in-mem-args#] (not (identical? (~->from-mem in-mem-args#) lookup-sentinel)))
-             f#          ~fn-form
-             ~skip-warmup?-sym (volatile! false)]
-
-         (fn ~mem-fn-sym [& ~args-sym]
-           (let [#_#_
-                 ~args-sym
-                 (if (empty? ~args-sym) ;; adds a bit of cost
-                   lookup-empty-args
-                   ~args-sym)
-                 ~args-hash-sym (cljs.core/-hash ~args-sym)
-                 mem-v# (get ~(if only-last? `(deref ~mem) mem)
-                             ~args-hash-sym lookup-sentinel)
-                 #_
-                 (~->from-mem ~args-sym)
-                 #_ (get-in ~mem-sym ~args-sym lookup-sentinel)]
-             #_(l [:mem ~mem])
-             #_(l [:args ~args-sym])
-             #_(log! [:input (count (first ~args-sym))])
-             (if-not (identical? mem-v# lookup-sentinel)
-               mem-v#
-               (do ~(when recur-by
-                      ;; ensure mem is warmed up with recursion results, before calling it
-                      `(when-not @~skip-warmup?-sym
-                         #_(l [:ensuring-warmed-up ~args-sym])
-                         #_(l [:mem ~mem])
-                         (let [cold-inputs#
-                               ((fn [cold-inputs-acc# prev-input#]
-                                  (if (or (apply ~recur-stop prev-input#)
-                                          (~->in-mem? prev-input#))
-                                    cold-inputs-acc#
-                                    (recur (conj cold-inputs-acc# prev-input#)
-                                           (apply ~recur-by prev-input#))))
-                                '()
-                                (apply ~recur-by ~args-sym))]
-                           (when (not (empty? cold-inputs#))
-                             #_(l :warming-up)
-                             (vreset! ~skip-warmup?-sym true)
-                             (warmup-cold-inputs ~mem-fn-sym cold-inputs#)
-                             (vreset! ~skip-warmup?-sym false)
-                             #_(l :warmed-up)))))
-                   #_(log! [:evaling ~args-sym (cljs.core/-hash ~args-sym) ~mem])
-                   (let [~v-sym (apply f# ~args-sym)
-                         #_#_
-                         butlast-arg-mem#
-                         (reduce (fn [prev-mem# arg#]
-                                   (let [?arg-mem# (get prev-mem# arg# lookup-sentinel)
-                                         arg-mem#  (if (identical? ?arg-mem# lookup-sentinel)
-                                                     (transient (hash-map))
-                                                     ?arg-mem#)]
-                                     (assoc! prev-mem# arg# arg-mem#)
-                                     arg-mem#))
-                                 ~mem
-                                 (butlast ~args-sym))]
-                     ~(if only-last?
-                        `(vreset! ~mem {~args-hash-sym ~v-sym})
-                        `(assoc! ~mem ~args-hash-sym ~v-sym))
-                     #_(assoc! butlast-arg-mem# (last ~args-sym) v#)
-                     ~v-sym))))))))
+       ~(concat
+         (if def-sym
+           `(fn)
+           `(fn ~mem-fn-sym))
+         (cond-> (->> arity-clauses
+                      (map (fn [[arity-args & arity-bodies]]
+                             `([& ~args-sym] ;; can't have overload with the same arity
+                               (let [#_#_
+                                     ~args-sym
+                                     (if (empty? ~args-sym) ;; adds a bit of cost
+                                       lookup-empty-args
+                                       ~args-sym)
+                                     ~mem-k-sym (~args->mem-k ~args-sym)
+                                     mem-v#         (get ~(if only-last? `(deref ~mem) mem)
+                                                         ~mem-k-sym lookup-sentinel)
+                                     #_
+                                     (~->from-mem ~args-sym)
+                                     #_             (get-in ~mem-sym ~args-sym lookup-sentinel)]
+                                 #_(l [:mem ~mem])
+                                 #_(l [:args ~args-sym])
+                                 #_(log! [:input (count (first ~args-sym))])
+                                 (if-not (identical? mem-v# lookup-sentinel)
+                                   mem-v#
+                                   (do ~(when recur-by
+                                          ;; ensure mem is warmed up with recursion results, before calling it
+                                          `(when-not @~skip-warmup?-sym
+                                             #_(l [:ensuring-warmed-up ~args-sym])
+                                             #_(l [:mem ~mem])
+                                             (let [cold-inputs#
+                                                   ((fn [cold-inputs-acc# prev-input#]
+                                                      (if (or (apply ~recur-stop prev-input#)
+                                                              (~->in-mem? prev-input#))
+                                                        cold-inputs-acc#
+                                                        (recur (conj cold-inputs-acc# prev-input#)
+                                                               (apply ~recur-by prev-input#))))
+                                                    '()
+                                                    (apply ~recur-by ~args-sym))]
+                                               (when (not (empty? cold-inputs#))
+                                                 #_(l :warming-up)
+                                                 (vreset! ~skip-warmup?-sym true)
+                                                 (warmup-cold-inputs ~mem-fn-sym cold-inputs#)
+                                                 (vreset! ~skip-warmup?-sym false)
+                                                 #_(l :warmed-up)))))
+                                       #_(log! [:evaling ~args-sym (cljs.core/-hash ~args-sym) ~mem])
+                                       (let [~arity-args ~args-sym
+                                             ~v-sym      ~(conj arity-bodies 'do)
+                                             #_#_
+                                             butlast-arg-mem#
+                                             (reduce (fn [prev-mem# arg#]
+                                                       (let [?arg-mem# (get prev-mem# arg# lookup-sentinel)
+                                                             arg-mem#  (if (identical? ?arg-mem# lookup-sentinel)
+                                                                         (transient (hash-map))
+                                                                         ?arg-mem#)]
+                                                         (assoc! prev-mem# arg# arg-mem#)
+                                                         arg-mem#))
+                                                     ~mem
+                                                     (butlast ~args-sym))]
+                                         ~(if only-last?
+                                            `(vreset! ~mem {~mem-k-sym ~v-sym})
+                                            `(assoc! ~mem ~mem-k-sym ~v-sym))
+                                         #_(assoc! butlast-arg-mem# (last ~args-sym) v#)
+                                         ~v-sym))))))))
+           (= 1 (count arity-clauses))
+           first)))))
 
 (defmacro tracing-fn-form
   [fn-form f-name]
@@ -709,20 +1043,26 @@
   All the captured info is glued together in hashgraph.app.inspector to display a glimpse of what happens at runtime."
   [f-name & forms]
   (assert (symbol? f-name))
-  (let [[?doc [fn-inputs & fn-bodies]] (if (string? (first forms))
-                                         [(first forms) (rest forms)]
-                                         [nil forms])
-        m (cond-> {}
-            ?doc (assoc :doc ?doc))
+  (let [?doc            (when (string? (first forms)) (first forms))
+        after-doc-forms (if ?doc (rest forms) forms)
+        fn-form         (if (every? seq? after-doc-forms)
+                          (concat '(fn) after-doc-forms)
+                          `(fn ~after-doc-forms))
+        m               (cond-> {}
+                          ?doc (assoc :doc ?doc))
 
-        timing?        (-> f-name meta (contains? :timing))
-        memoizing?     (-> f-name meta (contains? :memoizing))
-        memoizing-opts (-> f-name meta :memoizing)
+        timing?         (-> f-name meta (contains? :timing))
+        memoizing?      (-> f-name meta (contains? :memoizing))
+        memoizing-opts* (-> f-name meta :memoizing)
+        memoizing-opts  (if (true? memoizing-opts*)
+                          {}
+                          memoizing-opts*)
         profiling?     (-> f-name meta (contains? :profiling))
         tracing?       (if (-> f-name meta (contains? :tracing))
                          (-> f-name meta :tracing :enabled? false? not)
                          default-tracing-enabled?)
 
+        #_#_#_#_
         fn-form `(fn ~fn-inputs ~@(if timing?
                                     `((timing ~@fn-bodies))
                                     fn-bodies))
@@ -732,7 +1072,7 @@
                   fn-form)
 
         fn-form (if memoizing?
-                  (macroexpand `(memoizing ~memoizing-opts ~fn-form))
+                  (macroexpand `(memoizing ~(assoc memoizing-opts :def-sym f-name) ~fn-form))
                   fn-form)
         ]
 

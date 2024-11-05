@@ -1,11 +1,14 @@
 (ns hashgraph.app.transitions
   (:require [hashgraph.utils.js-map :as js-map] :reload-all))
 
+(defmacro ->view-state [view-id-path]
+  `(js-map/get-in! view-id-path->view-state ~view-id-path (js-map/js-map)))
+
 (defmacro t! [view-state & ts]
   (let [desired (gensym "desired")
         prop->t (gensym "prop->t")]
-    `(let [~desired (->desired ~view-state)
-           ~prop->t (->prop->t ~view-state)]
+    `(let [~desired (view-state->desired ~view-state)
+           ~prop->t (view-state->prop->t ~view-state)]
        ~(cons
          `do
          (apply concat

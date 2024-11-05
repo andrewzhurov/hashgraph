@@ -150,7 +150,7 @@
 
 (defn uninspect-one [inspected value-one]
   (if (inspected-one? inspected value-one)
-    (vec (remove #(= % value-one) inspected))
+    (vec (remove #(hash= % value-one) inspected))
     inspected))
 
 (defn toggle-inspect-one [inspected value-one]
@@ -221,7 +221,7 @@
 (declare accent-all)
 (def *peeked-raw (rum/derived-atom [*active-inspectables hga-keyboard/*kb-keys] ::*peeked
                    (fn [active-inspectables kb-keys]
-                     (when (kb-key? peek-key kb-keys)
+                     (when true #_(kb-key? peek-key kb-keys)
                        (->> active-inspectables
                             (map :value))))))
 
@@ -281,7 +281,7 @@
                                (when nested? "nested")]
 
                         analysis?
-                        (into (let [ips (rum/react *inspected-with-peeked)
+                        (into (let [ips      (rum/react *inspected-with-peeked)
                                     accented (rum/react *accented)]
                                 ["analysis"
                                  (when (->inspected? ips el) "inspected")
@@ -290,7 +290,7 @@
                         (conj "active"))}
         (not passive?)
         (assoc :on-mouse-enter #(do (when-not nested? (.stopPropagation %))
-                                    (active-inspectable! path (with-meta el {:nested-depth nested-depth})))
+                                    (l (active-inspectable! path (with-meta el {:nested-depth nested-depth}))))
                :on-mouse-leave #(if nested?
                                   (inactive-inspectable! path el)
                                   (reset-active-inspectables!))
@@ -798,7 +798,7 @@
            (or (vector? value) (seq? value) (set? value))
            (inspector-view-seqable value new-opts)
 
-           (not= value (js->clj value))
+           (not (hash= value (js->clj value)))
            (inspector-view-object value new-opts)
 
            :else (inspector-view-default value new-opts))]))
@@ -840,19 +840,19 @@
                                       ?new-medium-time-delta         (assoc :fn-profile/medium-time-delta ?new-medium-time-delta)
                                       ?new-medium-time-deltas-medium (assoc :fn-profile/medium-time-deltas-medium ?new-medium-time-deltas-medium))))))))))
 
-(def *fn-profiles (lazy-derived-atom [utils/*traces] ::*fn-profiles
-                                     (fn [traces]
-                                       (->> traces
-                                            traces->fn-profiles*
-                                            (map (fn [[fn-name fn-profile]]
-                                                   (assoc fn-profile :fn-profile/fn-name fn-name)))))))
+(def *fn-profiles (lazy-derived-atom [utils/*traces]
+                      (fn [traces]
+                        (->> traces
+                             traces->fn-profiles*
+                             (map (fn [[fn-name fn-profile]]
+                                    (assoc fn-profile :fn-profile/fn-name fn-name)))))))
 
-(def *max-time-trace (lazy-derived-atom [*fn-profiles] ::*max-time-trace
-                                        (fn [fn-profiles]
-                                          (-> fn-profiles
-                                              (->> (sort-by :fn-profile/max-time))
-                                              last
-                                              :fn-profile/max-time-trace))))
+(def *max-time-trace (lazy-derived-atom [*fn-profiles]
+                         (fn [fn-profiles]
+                           (-> fn-profiles
+                               (->> (sort-by :fn-profile/max-time))
+                               last
+                               :fn-profile/max-time-trace))))
 
 (def m-types
   [:event

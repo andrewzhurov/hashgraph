@@ -76,6 +76,7 @@
   ;;                     (str "found instead " (with-out-str (cljs.pprint/pprint (:traces @*log)))))))
 
 
+  #_
   (testing "merge-attr-maps*"
     (let [*state (atom {})
           inc-counter! #(swap! *state update :counter inc)

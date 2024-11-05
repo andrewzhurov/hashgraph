@@ -12,7 +12,7 @@
    [garden.units :refer [px]]
    [goog.string :refer [format]]
    [goog.object :as gobject]
-   [rum.core :as rum]
+   [rum.core :refer [defc defcs] :as rum]
    [taoensso.timbre :refer-macros [spy info]]
    [taoensso.tufte :as tufte :refer [defnp fnp p profiled profile]]
 
@@ -20,7 +20,6 @@
    [hashgraph.app.events :as hga-events]
    [hashgraph.app.view :refer [t] :as hga-view]
    [hashgraph.app.styles :refer [reg-styles! kind->css]]
-   [hashgraph.app.members :as hga-members]
    [hashgraph.app.playback :as hga-playback]
    [hashgraph.app.transitions :refer [tt] :as hga-transitions]
    [hashgraph.app.infini-events :as hga-infini-events]
@@ -34,7 +33,7 @@
    [hashgraph.app.utils :as hga-utils]
    [hashgraph.utils.core
     :refer [log! merge-attr-maps color-rgba-str timing *->time*]
-    :refer-macros [defn* l letl merge-attr-maps*]
+    :refer-macros [defn* l letl]
     :as utils]
    [hashgraph.main :as hg]
    [hashgraph.members :as hg-members]))
@@ -63,9 +62,9 @@
                   :width    "100vw"}
      [:.bins {:max-height (str "calc((100vh / 3) - " hga-view/scrollbar-height "px)")}]]
 
-    [:#viz
-     [:#render {:overflow   :visible
-                :transition "width 0.5s"}]]
+    [:#viz {:overflow   :visible
+            :transition "width 0.5s"
+            }]
     [:#inspector {:position :sticky
                   :left     "0px"
                   :width    "100vw"}]
@@ -87,7 +86,7 @@
             :right          (px hga-view/viz-margin-x)
             :pointer-events :none
             :z-index        hga-view/viz-z}
-     [:#render {:transition "height 0.5s"}
+     [:#viz {:transition "height 0.5s"}
       [:.inspectable.active {:pointer-events :all}]]]]])
 
 (def control-size-style
@@ -134,8 +133,7 @@
                                      :justify-content :center
                                      :align-items     :center})]]
 
-   [:#viz
-    [:#render {:overflow :visible}]
+   [:#viz {:overflow :visible}
     [:.inspectable {:transform-box    :fill-box
                     :transform-origin :center
                     :transition (t :scale (/ tt 2) :opacity (/ tt 2))}
@@ -206,7 +204,7 @@
          [start-vote-circumferance vote-circumferance end-vote-circumferance])))))
 
 
-(rum/defcs event-witness-view <
+(defcs event-witness-view <
   {:key-fn (fn [_] "witness")}
   hga-utils/static-by-hashes
   rum/reactive
@@ -229,10 +227,12 @@
                                         #_#_:on-mouse-enter #(when-not @*paths
                                                            (reset! *paths (hg/->strongly-see-r-paths event cr (dec number))))}])]))
 
-(rum/defcs event-votes-view <
+(defcs event-votes-view <
   hga-utils/static-by-hashes
   rum/reactive
   [_ round votes witness? event]
+  ;; :member/color-rgb is missing
+  #_
   (let [round-final? (:round/final? round)
         round-cr (:round/cr round)]
     [:g.votes-wrapper {:key "vote-wrapper"
@@ -263,7 +263,7 @@
                                                           :else
                                                           "lightgray")}})]]))]))]))
 
-(rum/defc event-round-view < hga-utils/static-by-hash rum/reactive
+(defc event-round-view < hga-utils/static-by-hash rum/reactive
   [{:round/keys [event number next? final? cr] :as round}]
   [:g (inspectable round)
    [:text.round-number {:class [(when (rum/react hga-state/*show-rounds?) "shown")
@@ -272,32 +272,60 @@
                         :y     (/ (- hga-view/wit-r) 2)}
     number]])
 
-(rum/defc event-tx-view < hga-utils/static-by-hashes rum/reactive
-  [{:tx/keys [fn-id args] :as tx} {:keys [color]}]
+(defc event-tx-view < hga-utils/static-by-hashes rum/reactive
+  [[tx-id] {:keys [color]}]
   [:svg.tx {:width  hga-view/evt-s
             :height hga-view/evt-s
             :x      (- hga-view/evt-r)
             :y      (- hga-view/evt-r)}
-   (case fn-id
+   (case tx-id
      :share-stake
      (hga-icons/icon :solid :transfer :color color)
      :inc-counter
-     (hga-icons/icon :solid :plus :color color))])
+     (hga-icons/icon :solid :plus :color color)
+     :text-message
+     (hga-icons/icon :regular :message :color color)
+     :connect-invite-accepted
+     (hga-icons/icon :solid :link :color color)
+     :init-control
+     (hga-icons/icon :solid :dna-3 :color color)
+     :rotate-control
+     (hga-icons/icon :solid :key :color color)
+     :assoc-did-peer
+     (hga-icons/icon :solid :at :color color)
+     :propose
+     (hga-icons/icon :regular :circle-check :color color)
+     :rotate
+     (hga-icons/icon :solid :key :color color)
+     (:inform-novel-ke :graft-ke)
+     [:g (hga-icons/icon :solid :hand-holding :color color)
+      [:g {:style {:transform "translate(20%, -15%)"
+                   :scale     "0.75"}}
+       (hga-icons/icon :solid :layer-group :color color)]]
+     #_(hga-icons/icon :solid :layer-group :color color)
+     (:disclose-acdc :attribute-acdc)
+     [:g (hga-icons/icon :solid :hand-holding :color color)
+      [:g {:style {:transform "translate(50%, 0%)"
+                   :scale     "0.5"}}
+       (hga-icons/icon :solid :certificate :color color)]]
+
+
+     (hga-icons/icon :solid :question :color color))])
 
 (defn translate-based-on-view-mode [x y]
   (if hga-view/view-mode-horizontal?
     (str "translate(" y "px," x "px)")
     (str "translate(" x "px," y "px)")))
 
-(def event-view-key-fn {:key-fn (fn [{:event-info/keys [event]}] (-hash event))})
-(rum/defcs event-view <
+(def event-view-key-fn {:key-fn (fn [_ {:event-info/keys [event]}] (-hash event))})
+(defcs event-view <
   event-view-key-fn
-  hga-utils/static-by-hash
+  hga-utils/static-by-hashes
   rum/reactive
-  (hga-transitions/mixin ::view-state    (fn [event-info] (some-> event-info :event-info/event -hash)))
-  (hga-transitions/mixin ::sp-view-state (fn [event-info] (some-> event-info :event-info/event hg/self-parent -hash)))
-  (hga-transitions/mixin ::op-view-state (fn [event-info] (some-> event-info :event-info/event hg/other-parent -hash)))
-  [{::keys [view-state sp-view-state op-view-state]} {:event-info/keys [event color round witness? cr votes received-event] :as event-info}]
+  (hga-transitions/mixin ::view-state    (fn [topic-path {:event-info/keys [event]}] [(hash topic-path) (hash event)]))
+  (hga-transitions/mixin ::sp-view-state (fn [topic-path {:event-info/keys [event]}] (when-let [sp (hg/self-parent event)] [(hash topic-path) (hash sp)])))
+  (hga-transitions/mixin ::op-view-state (fn [topic-path {:event-info/keys [event]}] (when-let [op (hg/other-parent event)] [(hash topic-path) (hash op)])))
+  [{::keys [view-state sp-view-state op-view-state]} topic-path {:event-info/keys [event color round witness? #_cr votes received-event] :as event-info}]
   ;;(js/console.log event-info)
   #_(log! [:render-event-view @hga-playback/*frame] (-hash event))
   (let [x                        (js-map/get view-state :x)
@@ -307,8 +335,8 @@
         {r            :round/number
          round-final? :round/final?
          round-next?  :round/next?
-         round-cr     :round/cr} round]
-    (when (not (zero? opacity))
+         #_#_round-cr     :round/cr} round]
+    (when (not (zero? (l opacity)))
       [:g {:opacity opacity}
 
        (let [ref-opacity (- 1 fill-opacity)
@@ -336,16 +364,18 @@
                        :height (* hga-view/wit-r 2)
                        :style  {:transform (translate-based-on-view-mode x y)}}
 
+        #_
         (event-witness-view round witness? event)
 
+        #_
         (event-votes-view round votes witness? event)
 
         ;; always rendering white background to hide refs
         (let [{:keys [red green blue] :as fill} (js-map/get view-state :fill)
-              tx (:event/tx event)]
+              ?tx                               (:event/tx event)]
           [:g (inspectable (cond-> [event]
                              received-event (conj received-event)
-                             tx             (conj tx))
+                             ?tx            (conj ?tx))
                            {:->inspected?   (fn [ips els]           (->> els (some (fn [el] (hga-inspector/->in ips el)))))
                             :->accented?    (fn [accented _ips els] (->> els (some (fn [el] (hga-inspector/->in accented el)))))})
            [:circle.event {:r            hga-view/evt-r
@@ -356,10 +386,11 @@
              [:circle.received-event {:class (when received-event "received")
                                       :r     hga-view/evt-r
                                       :fill  (str "rgba(" red "," green "," blue "," fill-opacity ")")}])
-           (when tx
-             [:g.tx-wrapper {:style {:scale "0.8"}}
-              (event-tx-view tx {:color (gc/hsl->hex (gc/lighten (gc/hsl 0 0 0) (* 100 fill-opacity)))})])])
+           (when-let [tx ?tx]
+             [:g.tx-wrapper {:style {:scale "0.6"}}
+              (event-tx-view tx {:color (gc/hsl->hex (gc/lighten (gc/hsl 0 0 0) (* 100 (l fill-opacity))))})])])
 
+        #_
         (event-round-view round)]])))
 
 
@@ -370,51 +401,80 @@
     (let [prev (concluded-round->witness->cr+vote prev-concluded-round)]
       (merge prev w->vote))))
 
+
+#_
 (defn event->color [event]
-  (-> event
-      hg/event->person
-      :member/color-rgb
-      color-rgba-str))
+  (let [member-aid->did-peers (-> event
+                                  hg/evt->db
+                                  :member-aid->did-peers)
+        event-member-aid (->> member-aid->did-peers
+                              (som (fn [[member-aid did-peers]]
+                                     (when (contains? (set did-peers)
+                                                      (-> event hg/creator))
+                                       member-aid))))]
+    #_
+    (-> event
+        hg/event->person
+        :member/color-rgb
+        color-rgba-str)))
 
 (defn cr+r->?cr [cr r]
   (let [cr-r (:concluded-round/r cr)]
     (cond (= cr-r r) cr
           (> cr-r r) (recur (:concluded-round/prev-concluded-round cr) r))))
 
-(def *rendered-evt-infos
-  (rum/derived-atom [hga-playback/*playback hga-state/*main-tip hga-state/*last-cr hga-state/*event->received-event] ::*rendered-evt-infos
-    (fn [{:keys [behind>
-                 played<   ;; asc
-                 rewinded< ;; asc
-                 ]}
-         ?main-tip
-         last-cr
-         event->received-event]
-      (let [->event-info
-            (fn [event]
-              (let [{r        :round/number
-                     r-final? :round/final?
-                     r-cr     :round/cr :as round} (hg/->round event last-cr)
+(defonce ^:dynamic aid->color nil)
 
-                    witness?            (hg/witness? event r-cr)
-                    will-receive-votes? (and witness? r-final?)
-                    receives-votes?     (and will-receive-votes? ?main-tip
-                                             (hg/voting-round? ?main-tip event r-cr)
+(defn* ^:memoizing ->did-peer->member-aid [member-aid->did-peers]
+  (l member-aid->did-peers)
+  (->> member-aid->did-peers
+       (reduce (fn [did-peer->member-aid-acc [member-aid did-peers]]
+                 (->> did-peers
+                      (reduce (fn [acc did-peer]
+                                (assoc acc did-peer member-aid))
+                              did-peer->member-aid-acc)))
+               (hash-map))))
+
+(def *rendered-evt-infos
+  (rum/derived-atom [hga-playback/*playback] ::*rendered-evt-infos
+    (fn [{:keys [behind>
+                 played<
+                 rewinded<]}]
+      (let [?main-tip              (->> played< reverse first)
+            ?last-cr               (some-> ?main-tip hg/->concluded-round)
+            ?last-re               (some-> ?last-cr :concluded-round/last-received-event)
+            ?db                    (some-> ?last-cr hg/cr->db)
+            ?member-aid->did-peers (some-> ?db :member-aid->did-peers)
+            did-peer->member-aid   (l (-> ?member-aid->did-peers ->did-peer->member-aid))
+            event->received-event  (hga-state/?received-event->event->received-event ?last-re)
+            ->event-info
+            (fn [event]
+              (let [#_#_{r        :round/number
+                     r-final? :round/final?
+                     r-cr     :round/cr :as round} (hg/->round event ?last-cr)
+
+                    #_#_witness?            (hg/witness? event r-cr)
+                    #_#_will-receive-votes? (and witness? r-final?)
+                    #_#_receives-votes?     (and will-receive-votes? ?main-tip
+                                             (> (hg/rounds-diff ?main-tip event cr)
+                                                (hg/cr->delay cr))
                                              (hg/ancestor? ?main-tip event))
-                    ?cr                 (when receives-votes?
-                                          (cr+r->?cr last-cr r))
+                    #_#_?cr                 (when receives-votes?
+                                          (cr+r->?cr ?last-cr r))
+                    #_#_
                     ?votes              (when receives-votes?
                                           (if-let [cr ?cr]
                                             (hg/->votes (:concluded-round/witness-concluded cr) event (:concluded-round/prev-concluded-round cr))
-                                            (hg/->votes ?main-tip event last-cr)))
+                                            (hg/->votes ?main-tip event ?last-cr)))
                     ?received-event     (event->received-event event)
-
-                    color      (event->color event)
-                    event-info (cond-> (hash-map :event-info/color    color
-                                                 :event-info/event    event
-                                                 :event-info/round    round)
-                                 witness?        (assoc :event-info/witness? witness?)
-                                 ?cr             (assoc :event-info/cr ?cr)
+                    color               (or (-> event hg/creator did-peer->member-aid aid->color color-rgba-str)
+                                            "black")
+                    event-info (cond-> {:event-info/color    color
+                                        :event-info/event    event}
+                                 #_#_:event-info/round    round
+                                 #_#_witness?        (assoc :event-info/witness? witness?)
+                                 #_#_?cr             (assoc :event-info/cr ?cr)
+                                 #_#_
                                  ?votes          (assoc :event-info/votes ?votes)
                                  ?received-event (assoc :event-info/received-event ?received-event))]
                 event-info))]
@@ -426,50 +486,54 @@
               reverse
               (map ->event-info))
          (->> behind>
-              (take 10)
+              (take 30)
               (map ->event-info))
          ]))))
 
-
-(rum/defc viz < rum/reactive
-  []
+(def *viz-dom-node (atom nil))
+(defc viz < rum/reactive
+  {:did-mount (fn [state]
+                (reset! *viz-dom-node (rum/dom-node state))
+                state)}
+  [topic-path viz-width viz-height]
   (let [[behind-evt-infos> played-evt-infos> rewinded-evt-infos>] (rum/react *rendered-evt-infos)]
-    [:div#viz
-     [:svg#render {(if hga-view/view-mode-horizontal? :width :height) (or (rum/react hga-state/*overide-viz-height)
-                                                                          (hga-view/evt->viz-height (-> played-evt-infos> first :event-info/event)))
-                   (if hga-view/view-mode-horizontal? :height :width) hga-view/viz-x-span}
-      [:g.events-view
-       (for [evt-info rewinded-evt-infos>]
-         (event-view evt-info))
-       (for [evt-info played-evt-infos>]
-         (event-view evt-info))
-       (for [evt-info behind-evt-infos>]
-         (event-view evt-info))]]]))
+    [:svg#viz {:style {:min-width  viz-width
+                       :width      viz-width
+                       :height     viz-height
+                       :transition "min-width 0.4s, width 0.4s"}}
+     [:g.events-view
+      (for [evt-info rewinded-evt-infos>]
+        (event-view topic-path evt-info))
+      (for [evt-info (l played-evt-infos>)]
+        (event-view topic-path evt-info))
+      (for [evt-info behind-evt-infos>]
+        (event-view topic-path evt-info))]
+     (l [:g.done-viz-render])]))
 
-(rum/defc menu-controls []
+(defc menu-controls []
   [:div#menu-controls
    [:button#menu-controls-toggler
     (hga-icons/icon :solid :bars :size :2xl)]
    #_[:button {:on-click #(swap! hga-state/*playback-attached-to-scroll? not)}
     (str (if (rum/react hga-state/*playback-attached-to-scroll?) "detach" "attach") " playback to scroll")]])
 
-(rum/defc controls-view < rum/reactive []
+(defc controls-view < rum/reactive []
   [:div#controls
    #_(menu-controls)
    (hga-playback/playback-controls-view)])
 
-(rum/defc viz-section-view
+(defc viz-section-view
   []
   [:div#viz-section {:style {:position :relative}}
    (hga-tutorial/view)
    (viz)
-   (hga-members/view)
+   #_(hga-members/view)
    (hga-inspector/bins-view)
    ])
 
 (def scroll-coord (if hga-view/view-mode-horizontal? "left" "top"))
 (def scroll-attr (if hga-view/view-mode-horizontal? "scrollLeft" "scrollTop"))
-(rum/defc page-view <
+(defc page-view <
   {:did-mount
    (fn [state]
      (let [dom-node (rum/dom-node state)]
@@ -506,7 +570,7 @@
    (when js/goog.DEBUG
      (hga-inspector/debug-view))])
 
-(rum/defc view < rum/reactive []
+(defc view < rum/reactive []
   [:div#root-view
    [:style (kind->css :bare)]
    (let [horizontal-css (kind->css :horizontal)

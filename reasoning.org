@@ -1,4 +1,3 @@
-
 * TODO dynamic membership
 ** DONE initial membership
 ** TODO initial membership UI
@@ -252,6 +251,8 @@ Whereas we need to clarify that it's done based on the hashgraph a member has.
 ** DONE perhaps Shift+click to add to inspected, plain click to set inspected
 ** TODO stop auto-scroll on manual scroll
 ** TODO fix gossip to gossip to one random member
+*** although [[https://hyp.is/r2lF-vo0Ee6NZY9fP-Azgg/www.swirlds.com/downloads/SWIRLDS-TR-2016-01.pdf][here in paper]] member send his event to two members
+**** how it works specified [[https://hyp.is/8NzAmPo0Ee683dNgpWB0cQ/www.swirlds.com/downloads/SWIRLDS-TR-2016-01.pdf][here]]
 *** TODO what if member's unreachable?
 **** perhaps to broadcast to another
 *** TODO what if member receives it but does not include in their DAG?
@@ -305,6 +306,8 @@ Whereas we need to clarify that it's done based on the hashgraph a member has.
 
 
 * possible further work
+** links to tutors, ala ?tutor=round_concluded
+Can be useful for pointing to Hashgraph's behaviour.
 ** switch to garden color data model
 *** add color viz to inspector
 ** DONE make algorithm viz mesmerizing
@@ -346,3 +349,35 @@ Whereas we need to clarify that it's done based on the hashgraph a member has.
 **** what's the use-case with high degree of conflict and p2p?
 ***** asset transfer
 **** what's the use-case with need of total order?
+
+* future
+** embrace tape
+#+begin_src
+tape of a1 [a0 b0 a1]
+#+end_src
+subjective order of events, as they've been received, idxs are stable
+** embrace columnar model
+#+begin_src
+             a0 b0 a1
+creator      0  1  0
+self-parent  _  _  0
+other-parent _  _  1
+tx           0  1  _
+depth        0  0  1
+
+creators [:a :b]
+txes     [tx1 tx2]
+#+end_src
+** perhaps vector as self-parent chain
+*** where event is a vector
+*** where vec element is a ref to tape
+*** how performance compares with maps?
+** rewrite it in Rust
+** multi-key creator
+** inspectable messages
+** inspectable read receipts
+** shown messages as f(last-played-event)
+** +C to appear conditionally as f(clipboard-text)
+*** only when there's not yet such outbound contact & it's not my
+** contact names
+*** as unique part of did, as in members

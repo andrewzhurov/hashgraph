@@ -174,7 +174,7 @@
 
       "Step #1 is to determine " (i round "event's round number") "."])
    (fn [event]
-     (when (= 3 (hg/index event))
+     (when (= 3 (hg/event->index event))
        (let [round (hg/->round event (hg/->concluded-round event))]
          {::on-event  event
           ::on-play   #(reset! hga-state/*show-rounds? true)
