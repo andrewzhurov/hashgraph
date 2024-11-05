@@ -54,17 +54,17 @@
 
 (declare current->desired-run!)
 (defn play! [topic-path creator->x evts<]
-  (l [::play! topic-path creator->x evts<])
+  #_(l [::play! topic-path creator->x evts<])
   (let [tt-start (cljs.core/system-time)
         tt-end   (+ tt-start tt)]
     (doseq [evt evts<]
-      (letl2 [view-state   (-> [(hash topic-path) (hash evt)] ->view-state)
-              ?p           (or (-> evt :event/other-parent)
-                               (-> evt :event/self-parent))
-              ?p-current   (when-let [p ?p]
-                             (-> [(hash topic-path) (hash p)] ->view-state view-state->current))
-              to-x         (creator->x (hg/creator evt))
-              to-y         (hga-view/evt->y evt)]
+      (let [view-state (-> [(hash topic-path) (hash evt)] ->view-state)
+            ?p         (or (-> evt :event/other-parent)
+                             (-> evt :event/self-parent))
+            ?p-current (when-let [p ?p]
+                           (-> [(hash topic-path) (hash p)] ->view-state view-state->current))
+            to-x       (creator->x (hg/creator evt))
+            to-y       (hga-view/evt->y evt)]
         (if ?p-current
           (t! view-state
             :x tt-start ?p-current to-x tt-end
@@ -75,14 +75,9 @@
             :y       tt-start to-y to-y tt-end
             :opacity tt-start 0    1    tt-end))))))
 
-#_
-(add-watch hga-state/*just-played< ::just-played-transitions-on-playback
-           (fn [_ _ _ just-played<]
-             #_(log! :just-played< just-played<)
-             (play! just-played<)))
 
 (defn rewind! [topic-path evts>]
-  (l [::rewind! evts>])
+  #_(l [::rewind! evts>])
   (let [tt-start (cljs.core/system-time)
         tt-end   (+ tt-start tt)]
     (doseq [evt evts>]
@@ -103,130 +98,121 @@
           (t! view-state
             :opacity tt-start from-opacity 0          tt-end))))))
 
-#_
-(add-watch hga-state/*just-rewinded> ::just-rewinded-transitions-on-playback
-           (fn [_ _ _ just-rewinded>]
-             #_(log! :just-rewinded> just-rewinded>)
-             (rewind! just-rewinded>)))
 
-#_
-(defn* ^:memoizing ?cr->to-y [?cr main-creator]
-  (max hga-view/evt-offset-y
-       (some-> ?cr
-               :concluded-round/creator->received-unique-tip
-               (get main-creator)
-               hga-view/evt->y)))
+(defn* ^:memoizing initial-tip-taped+initial-cr+cr->?to-initial-y [initial-tip-taped initial-cr cr]
+  (let [initial-sub-crs<   (->> initial-cr
+                                (iterate :concluded-round/prev-concluded-round)
+                                (take-while some?)
+                                reverse)
+        from-y             hga-view/evt-offset-y
+        initial-to-y       (-> initial-tip-taped hga-view/evt->y)
+        initial-y-range    (- initial-to-y from-y)
+        initial-cr-delta-y (if (> (count initial-sub-crs<) 1)
+                             (/ initial-y-range (dec (count initial-sub-crs<)))
+                             initial-y-range)]
+    (+ from-y (* (:concluded-round/r cr) initial-cr-delta-y))))
 
-(defn* ^:memoizing initial-cr+cr->?to-initial-y [initial-cr cr]
-  (when (<= (:concluded-round/r cr) (:concluded-round/r initial-cr))
-    (let [initial-sub-crs<   (->> initial-cr
-                                  (iterate :concluded-round/prev-concluded-round)
-                                  (take-while some?)
-                                  reverse)
-          from-y             hga-view/evt-offset-y
-          initial-tip-taped  (-> initial-cr :concluded-round/witness-concluded)
-          initial-to-y       (-> initial-tip-taped hga-view/evt->y)
-          initial-y-range    (- initial-to-y from-y)
-          initial-cr-delta-y (if (> (count initial-sub-crs<) 1)
-                               (/ initial-y-range (dec (count initial-sub-crs<)))
-                               initial-y-range)]
-      (+ from-y (* (:concluded-round/r cr) initial-cr-delta-y)))))
-
-(defn* ^:memoizing initial-cr+cr->to-y [initial-cr cr]
-  (or (initial-cr+cr->?to-initial-y initial-cr cr)
-      (let [witness-concluded (:concluded-round/witness-concluded cr)]
-        (or (some-> cr
-                    :concluded-round/creator->received-unique-tip
-                    (get (hg/creator witness-concluded))
-                    hga-view/evt->y)
-            (-> witness-concluded
-                hg/first-self-parent
-                hga-view/evt->y
-                (- hga-view/sp-padding))))))
+(defn* ^:memoizing initial-tip-taped+initial-cr+cr->to-y [initial-tip-taped initial-cr cr]
+  (if (not= (hg/creator (:concluded-round/witness-concluded cr)) (hg/creator initial-tip-taped))
+    (initial-tip-taped+initial-cr+cr->?to-initial-y initial-tip-taped initial-cr cr)
+    (let [witness-concluded (:concluded-round/witness-concluded cr)]
+      (or (some-> cr
+                  :concluded-round/creator->received-unique-tip
+                  (get (hg/creator witness-concluded))
+                  hga-view/evt->y)
+          (-> witness-concluded
+              hg/first-self-parent
+              hga-view/evt->y
+              (- hga-view/sp-padding))))))
 
 (def cr-tt-delay (/ tt 20))
 (def **last-cr-tt-start  (volatile! (cljs.core/system-time)))
 (def **last-cr-direction (volatile! nil))
-(defn transition-on-cr-change! [topic-path ?creator->x initial-cr prev-cr current-cr]
-  (when (not (identical? prev-cr current-cr))
-    (current->desired-run!) ;; trigger manually, and not wait for engine that runs on next frame, as some may not be processed and we need them
-    (if (or (nil? prev-cr)
-            (> (:concluded-round/r current-cr)
-               (:concluded-round/r prev-cr)))
-      (do (l [::transition-on-cr-change! :forwards topic-path prev-cr current-cr])
-          (letl2 [new-crs (into [] (comp (take-while some?)
-                                         (take-while (fn [cr] (not (hash= cr prev-cr)))))
-                                (iterate :concluded-round/prev-concluded-round current-cr))
-                  main-creator (-> current-cr :concluded-round/witness-concluded hg/creator)
-                  to-x         (or (get ?creator->x main-creator)
-                                   0)]
-            (vswap! **last-cr-tt-start (fn [last-tt-start] (if (= @**last-cr-direction :forwards)
-                                                             (max last-tt-start (cljs.core/system-time))
-                                                             (cljs.core/system-time))))
-            (vreset! **last-cr-direction :forwards)
-            (doseq [new-cr (reverse new-crs)]
-              (letl2 [received-events (->> (:concluded-round/last-received-event new-cr)
-                                           (iterate :received-event/prev-received-event)
-                                           (take-while some?)
-                                           (take-while #(= (:received-event/r %) (:concluded-round/r new-cr))))
-                      prev-cr         (:concluded-round/prev-concluded-round new-cr)
-                      prev-cr-to-y    (initial-cr+cr->to-y initial-cr prev-cr)
-                      new-cr-to-y     (initial-cr+cr->to-y initial-cr new-cr)
-                      to-y-offset     (-> new-cr-to-y
-                                          (- prev-cr-to-y)
-                                          (/ (count (:concluded-round/es-r new-cr))))
-                      ->to-y          (fn [re] (+ prev-cr-to-y (* to-y-offset (inc (:received-event/r-idx re)))))]
-                (doseq [re (reverse received-events)]
-                  (letl2 [tt-start          (vswap! **last-cr-tt-start + cr-tt-delay)
-                          evt               (:received-event/event re)
-                          view-state        (-> [(hash topic-path) (hash evt)] ->view-state)
-                          current           (-> view-state view-state->current)
-                          to-y              (->to-y re)
-                          from-fill-opacity (or (num (js-map/get current :fill-opacity))
-                                                (do (js-map/assoc! current :fill-opacity 0)
-                                                    0))]
-                    (js-map/assoc! current :fill (:received-event/color re))
-                    (t! view-state
-                      :x tt-start (js-map/get current :x) to-x nil ;; blank tt-end, as it's not used atm by the engine anyway
-                      :y tt-start (js-map/get current :y) to-y nil
-                      :fill-opacity tt-start from-fill-opacity 1 nil)))))))
-      (do (l [::transition-on-cr-change! :backwards topic-path prev-cr current-cr])
-          (let [crs-to-rewind (into [] (comp (take-while some?)
-                                             (take-while (fn [cr] (not (hash= cr current-cr)))))
-                                    (iterate :concluded-round/prev-concluded-round prev-cr))]
-            (vswap! **last-cr-tt-start (fn [last-tt-start] (if (= @**last-cr-direction :backwards)
-                                                             (max last-tt-start (cljs.core/system-time))
-                                                             (cljs.core/system-time))))
-            (vreset! **last-cr-direction :backwards)
-            (doseq [cr-to-rewind crs-to-rewind]
-              (let [received-events (->> (:concluded-round/last-received-event cr-to-rewind)
-                                         (iterate :received-event/prev-received-event)
-                                         (take-while some?)
-                                         (take-while #(= (:received-event/r %) (:concluded-round/r cr-to-rewind))))]
-                (doseq [re received-events]
-                  (let [evt               (:received-event/event re)
-                        view-state        (-> [(hash topic-path) (hash evt)] ->view-state)
-                        current           (-> view-state view-state->current)
-                        from-x            (js-map/get current :x)
-                        from-y            (js-map/get current :y)
-                        from-fill-opacity (or (num (js-map/get current :fill-opacity))
-                                              (do (js-map/assoc! current :fill-opacity 0)
-                                                  0))
-                        to-x              (or (get ?creator->x (hg/creator evt))
-                                              from-x)
-                        to-y              (hga-view/evt->y evt)
-                        to-fill-opacity   0]
-                    #_(when (or (not= from-x to-x)
-                                (not= from-y to-y)
-                                (not= from-opacity to-opacity)))
-                    (let [tt-start (vswap! **last-cr-tt-start + cr-tt-delay)]
-                      (t! view-state
-                        :x tt-start from-x to-x nil
-                        :y tt-start from-y to-y nil
-                        :fill-opacity tt-start from-fill-opacity to-fill-opacity nil)))))))))))
+(defn weave-cr! [topic-path initial-tip-taped initial-cr ?creator->x prev-cr current-cr]
+  #_(l [::weave-cr! topic-path prev-cr current-cr])
+
+  ;; trigger manually, and not wait for engine that runs on next frame, as some may not be processed and we need them
+  (current->desired-run!)
+
+  (let [main-creator (hg/creator initial-tip-taped)
+        new-crs      (into [] (comp (take-while some?)
+                               (take-while (fn [cr] (not (hash= cr prev-cr)))))
+                      (iterate :concluded-round/prev-concluded-round current-cr))
+        to-x         (or (get ?creator->x main-creator)
+                         0)]
+    (vswap! **last-cr-tt-start (fn [last-tt-start] (if (= @**last-cr-direction :forwards)
+                                                     (max last-tt-start (cljs.core/system-time))
+                                                     (cljs.core/system-time))))
+    (vreset! **last-cr-direction :forwards)
+    (doseq [new-cr (reverse new-crs)]
+      (let [received-events (->> (:concluded-round/last-received-event new-cr)
+                                 (iterate :received-event/prev-received-event)
+                                 (take-while some?)
+                                 (take-while #(= (:received-event/r %) (:concluded-round/r new-cr))))
+            prev-cr         (:concluded-round/prev-concluded-round new-cr)
+            prev-cr-to-y    (initial-tip-taped+initial-cr+cr->to-y initial-tip-taped initial-cr prev-cr)
+            new-cr-to-y     (initial-tip-taped+initial-cr+cr->to-y initial-tip-taped initial-cr new-cr)
+            to-y-offset     (-> new-cr-to-y
+                                (- prev-cr-to-y)
+                                (/ (count (:concluded-round/es-r new-cr))))
+            ->to-y          (fn [re] (+ prev-cr-to-y (* to-y-offset (inc (:received-event/r-idx re)))))]
+        (doseq [re (reverse received-events)]
+          (let [tt-start          (vswap! **last-cr-tt-start + cr-tt-delay)
+                evt               (:received-event/event re)
+                view-state        (-> [(hash topic-path) (hash evt)] ->view-state)
+                current           (-> view-state view-state->current)
+                to-y              (->to-y re)
+                from-fill-opacity (or (num (js-map/get current :fill-opacity))
+                                      (do (js-map/assoc! current :fill-opacity 0)
+                                          0))]
+            (js-map/assoc! current :fill (:received-event/color re))
+            (t! view-state
+              :x tt-start (js-map/get current :x) to-x nil ;; blank tt-end, as it's not used atm by the engine anyway
+              :y tt-start (js-map/get current :y) to-y nil
+              :fill-opacity tt-start from-fill-opacity 1 nil)))))))
+
+(defn unweave-cr! [topic-path ?creator->x prev-cr current-cr]
+  #_(l [::unweave-cr! topic-path ?creator->x prev-cr current-cr])
+
+  ;; trigger manually, and not wait for engine that runs on next frame, as some may not be processed and we need them
+  (current->desired-run!)
+
+  (let [crs-to-rewind (into [] (comp (take-while some?)
+                                     (take-while (fn [cr] (not (hash= cr current-cr)))))
+                            (iterate :concluded-round/prev-concluded-round prev-cr))]
+    (vswap! **last-cr-tt-start (fn [last-tt-start] (if (= @**last-cr-direction :backwards)
+                                                     (max last-tt-start (cljs.core/system-time))
+                                                     (cljs.core/system-time))))
+    (vreset! **last-cr-direction :backwards)
+    (doseq [cr-to-rewind crs-to-rewind]
+      (let [received-events (->> (:concluded-round/last-received-event cr-to-rewind)
+                                 (iterate :received-event/prev-received-event)
+                                 (take-while some?)
+                                 (take-while #(= (:received-event/r %) (:concluded-round/r cr-to-rewind))))]
+        (doseq [re received-events]
+          (let [evt               (:received-event/event re)
+                view-state        (-> [(hash topic-path) (hash evt)] ->view-state)
+                current           (-> view-state view-state->current)
+                from-x            (js-map/get current :x)
+                from-y            (js-map/get current :y)
+                from-fill-opacity (or (num (js-map/get current :fill-opacity))
+                                      (do (js-map/assoc! current :fill-opacity 0)
+                                          0))
+                to-x              (or (get ?creator->x (hg/creator evt))
+                                      from-x)
+                to-y              (hga-view/evt->y evt)
+                to-fill-opacity   0]
+            #_(when (or (not= from-x to-x)
+                        (not= from-y to-y)
+                        (not= from-opacity to-opacity)))
+            (let [tt-start (vswap! **last-cr-tt-start + cr-tt-delay)]
+              (t! view-state
+                :x tt-start from-x to-x nil
+                :y tt-start from-y to-y nil
+                :fill-opacity tt-start from-fill-opacity to-fill-opacity nil))))))))
 
 (defn re-position! [topic-path old-x->new-x]
-  (l [::re-position! topic-path old-x->new-x])
+  #_(l [::re-position! topic-path old-x->new-x])
   (let [view-id-path*->view-state (js-map/get! view-id-path->view-state (hash topic-path) (js-map/js-map))
         tt-start                  (cljs.core/system-time)
         tt-end                    (+ tt-start tt)]
