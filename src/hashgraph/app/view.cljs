@@ -159,8 +159,8 @@
   (> y (->viz-viewbox-bound-max viz-scroll)))
 
 (defn ->after-viz-playback-viewbox? [y viz-scroll]
-  (let [playback-view-bound-max (+ viz-scroll (l playback-size))]
-    (> y (l playback-view-bound-max))))
+  (let [playback-view-bound-max (+ viz-scroll playback-size)]
+    (> y playback-view-bound-max)))
 
 
 (defn t [& t-descs]

@@ -10,7 +10,7 @@
    :exclude [parents ancestors])
   (:require [hashgraph.members :as hg-members]
             [hashgraph.schemas :as hgs]
-            [hashgraph.utils.core :refer-macros [defn* defnm defnml l cl letl2 letlt] :refer [*mem* *from-mem* xor median not-neg hash= safe-max map-vals filter-map-vals conjv]]
+            [hashgraph.utils.core :refer-macros [defn* defnm defnml l cl letl2 letlt when-let*] :refer [*mem* *from-mem* xor median not-neg hash= safe-max map-vals filter-map-vals conjv distinct-by]]
             [hashgraph.utils2 :refer-macros [td time3]]
 
             [clojure.set :refer [union] :as set]
@@ -320,8 +320,7 @@
   (let [creator->tips (-> event event->creator->tips)]
     (->> creator->tips
          (filter-map-vals (fn [tips] (when (= 1 (count tips))
-                                       (first tips))))
-         (into (hash-map)))))
+                                       (first tips)))))))
 
 #_(defn* ^:memoizing event->creator->unique-tip [event]
   (let [?sp-c->ut (some-> (self-parent event) event->creator->unique-tip)
@@ -465,15 +464,22 @@
 
 
 (declare ->round-info)
+(declare cr->stake-map)
 
-(defn* ^{:memoizing {:bind {:->in-mem? ->in-mem?
+(defn r+cr->final-round? [r cr]
+  (<= r (inc (:concluded-round/r cr))))
+
+(defn* ^{:memoizing {:bind {:->in-mem?  ->in-mem?
                             :->from-mem ->from-mem}}}
   ->round ;; see-many-see-many-see ;; see-many-strongly-see
   "Round number of y, as known to a previous round concluded x.
    It's either 1 if y has no parents,
    or a max round of events strongly seen by many (as known to x) +1."
   [x cr]
-
+  #_
+  (when (and (self-parent x)
+             (other-parent x))
+    (js* "debugger;"))
   ;; To efficiently compute round x we need to cater for two cases:
   ;; 1. When new cr arrives => rounds that been final need not be re-computed.
   ;; 2. When new event arrives => it's round will be atop max parent's cr. Since it's round will be atop max parent's round, a continuation of it's compute.
@@ -488,11 +494,11 @@
   ;; 1. new cr - lookup whether final
   ;; TODO lookup if no mem exist first
   (let [?prev-round-mem
-        (loop [?cr cr]
-          (when-let [cr ?cr]
-            (if (->in-mem? [x cr])
-              (->from-mem [x cr])
-              (recur (:concluded-round/prev-concluded-round cr)))))]
+        (loop [prev-cr (:concluded-round/prev-concluded-round cr)]
+          (if (->in-mem? x prev-cr)
+            (->from-mem x prev-cr)
+            (when-let [prev-prev-cr (:concluded-round/prev-concluded-round prev-cr)]
+              (recur prev-prev-cr))))]
 
     ;; Once round r is settled, stake-map _may_ change, rounds of further events,
     ;; and, in turn, witnesses, famous witness, crs.
@@ -500,147 +506,227 @@
 
     ;; So, once there is a cr that gave round number less or equal to cr+1 - it's final.
     ;; We need _less_ for cases when stake changed and more events received cr's round number.
-    (or (when (:round/final? ?prev-round-mem)
-          ?prev-round-mem)
+    (or (and (:round/final? ?prev-round-mem)
+             ?prev-round-mem)
 
-        ;; 2. new event (or cr not final)
-        ;; either max parent's cr gives final round or the one after
-        ;; but it's not guaranteed that parents have final rounds
-        ;; and we'd like to memo for all crs anyways, so run from max parents' cr
-        (let [p-rounds   (map (fn [p] (->round p cr)) (parents x))
-              p-crs      (->> p-rounds (map :round/cr))
-              ?p-max-cr-r (->> p-crs
-                               (map :concluded-round/r)
-                               (apply max))
-              ?try-after-cr-r (max (some-> ?prev-round-mem :round/cr :concluded-round/r)
-                                   (some-> ?p-max-cr-r dec))
+        ;; adop non-final round if crs atop did not have changed stake-map
+        (let [?same-stake-crs-atop-mem<    (when-let [prev-round-mem ?prev-round-mem]
+                                             (->> cr
+                                                  (iterate :concluded-round/prev-concluded-round)
+                                                  (take-while some?)
+                                                  (take-while #(> (:concluded-round/r %) (:concluded-round/r (:round/cr prev-round-mem))))
+                                                  reverse
+                                                  (take-while #(= (-> % cr->stake-map)
+                                                                  (-> prev-round-mem :round/cr cr->stake-map)))
+                                                  not-empty))
+              ?last-same-stake-cr-atop-mem (last ?same-stake-crs-atop-mem<)]
+          (when-let [prev-round-mem ?prev-round-mem]
+            (when-let [same-stake-crs-atop-mem< ?same-stake-crs-atop-mem<]
+              (when-let [same-stake-final-cr (->> same-stake-crs-atop-mem<
+                                                  (some (fn [same-stake-cr]
+                                                          (when (r+cr->final-round? (-> prev-round-mem :round/number) same-stake-cr)
+                                                            same-stake-cr))))]
+                (-> prev-round-mem
+                    (assoc :round/cr same-stake-final-cr)
+                    (assoc :round/final? true)))
 
-              crs-to-try
-              (->> cr
-                   (iterate :concluded-round/prev-concluded-round)
-                   (take-while some?)
-                   (drop 1) ;; we'll close with it, if none to-try are final
-                   (take-while (fn [cr] (or (nil? ?try-after-cr-r)
-                                            (> (:concluded-round/r cr) ?try-after-cr-r))))
-                   reverse)
+              (when (hash= ?last-same-stake-cr-atop-mem cr)
+                (-> prev-round-mem
+                    (assoc :round/cr cr)))))
 
-              ?final-round (loop [[?cr-to-try & crs-to-try-rest] crs-to-try]
-                             (when ?cr-to-try
-                               (let [cr-round (->round-info x ?cr-to-try)]
-                                 (if (:round/final? cr-round)
-                                   cr-round
-                                   (recur crs-to-try-rest)))))]
-          (or ?final-round
-              (->round-info x cr))))))
+          ;; 2. new event (or round is not final and stake-map changed)
+          ;; either max parent's cr gives final round or the one after
+          ;; but it's not guaranteed that parents have final rounds
+          ;; and we'd like to memo for all crs anyways, so run from max parents' cr
+          (let [p-rounds      (->> x parents (map (fn [p] (->round p cr))))
+                p-crs         (->> p-rounds (map :round/cr))
+                ?p-max-cr     (->> p-crs
+                                   (sort-by :concluded-round/r >)
+                                   first)
+                ?try-after-cr (max-key :concluded-round/r
+                                       (some-> ?last-same-stake-cr-atop-mem :round/cr)
+                                       (some-> ?p-max-cr :concluded-round/prev-concluded-round))
 
-(declare concluded-round->stake-map)
+                crs-to-try
+                (->> cr
+                     (iterate :concluded-round/prev-concluded-round)
+                     (take-while some?)
+                     (take-while (fn [prev-cr] (not (hash= prev-cr ?try-after-cr))))
+                     ;; TODO optimize for not-running same-stake-map crs & short-curcuit on final same-stake-map cr
+
+                     ;; no point in running same stake-map crs in hope they give final round
+                     ;; taking last same-stake crs here, as were we take first ones - chances some subsequent would give final round and we'd skip it
+                     ;; we could instead take first same-stake cr that can give final round
+                     ;; this way we both 1) preserve in :round/cr the first cr that gives finality 2) will not miss those crs
+                     ;; do we need 1. though? Let's leave it as is for now due to simplicity of impl
+                     ;; (distinct-by cr->stake-map) ;; Note: :round/cr on final rounds may not be the the first same-stake cr that gives finality
+                     reverse)
+
+                round (loop [[cr-to-try & crs-to-try-rest] crs-to-try]
+                        (let [cr-round (->round-info x cr-to-try)]
+                          (cond (:round/final? cr-round) ;; short-curcuit on final round
+                                (-> cr-round
+                                    (assoc :round/cr cr)) ;; bump final round to latest cr, so future round calculations are faster
+
+                                (empty? crs-to-try-rest)
+                                cr-round
+
+                                :else
+                                (recur crs-to-try-rest))))]
+            round)))))
+
 (declare many-stake)
+#_
+(defn bump-stake [el c stake-map]
+  (let [new-stake (+ (meta el) (get stake-map c))]
+    (or (> new-stake many-stake)
+        (with-meta el new-stake))))
+
+(defn add-sbc [sbcs sbc stake-map]
+  (let [new-stake (+ (meta sbcs) (get stake-map sbc))]
+    (or (> new-stake many-stake)
+        (-> sbcs
+            (conj sbc)
+            (with-meta new-stake)))))
+
+;; stronglySee(x, y) = see(x, y) ∧ (∃S ⊆ E, manyCreators(S) ∧(z ∈ S =⇒ (see(x, z) ∧ see(z, y))))
+
+;; round(x) = max({selfParentRound(x)} ∪ {r + 1 | ∃S ⊆ E, manyCreators(S) ∧ (∀y ∈ S, round(y) = r ∧ stronglySee(x, y))})
+;; seems safe to assume that:
+;; 1. y is a witness, since no self-descendant of y will be seen more
+;; 2. y is unique, since x cannot see non-unique y
+
+;; Then, naively round bump can be calculated as:
+;; derive creator->unique-tip
+;; derive creator->unique-r-tip, (filter those unique-tips whose r = max-parent-r)
+;; derive creator->unique-r-witness, (take their last witnesses)
+;; for each unique-r-witness, derive whether its strongly seen, derive whether many strongly seen
+;; Cons: this is inefficient, O(n2), as every unique-r-tip will be checked whether it can see every unique-r-witness
+;;       also, plenty of re-compute
+;;       better have an incremental alg that short-curcuits when seen enough
+;; Also, dynamic-stake map complicates calculation of unique-r-tip.
+
+
+
+;; (= #{1 3 2} #{2 4 0}) => true (due to camparison by hashes that collide easily on simple structs)
+
+;; not BFT
+(declare concluded-round->stake-map)
 (defn* ^:memoizing ->round-info
   [x cr]
-  (let [stake-map (concluded-round->stake-map cr)
-        xc        (creator x)
-        xc-stake  (get stake-map xc)
-        ?spx      (self-parent x)
-        ?opx      (other-parent x)]
+  #_(when (some? (other-parent x)) (js* "debugger;"))
+  (let [stake-map    (concluded-round->stake-map cr)
+        xc           (creator x)
+        self-sbcs    (add-sbc #{} xc stake-map)
+        self-w->sbcs (cond-> (hash-map x self-sbcs)
+                       (true? self-sbcs) (vary-meta + (get stake-map xc)))
+        ?spx         (self-parent x)
+        ?opx         (other-parent x)]
     (if (and (nil? ?spx)
              (nil? ?opx)) ;; will add (little) cost to all non-bottom events
       (hash-map :round/event    x
                 :round/number   1
+                :round/next?    true
                 :round/final?   true
                 ;; many see many see (true) or witness creator -> many see (true) or seen by creators set
-
-                :round/wc->sbcs {xc (with-meta #{xc} xc-stake)}
+                :round/w->sbcs  self-w->sbcs
                 :round/cr       cr)
 
-      (let [?spx-round (some-> ?spx (->round cr))
-            ?opx-round (some-> ?opx (->round cr))
-            max-p-r    (max (some-> ?spx-round :round/number)
-                            (some-> ?opx-round :round/number))]
-        (if (= 1 (count stake-map))
-          (let [r (inc max-p-r)]
-            (hash-map
-             :round/event    x
-             :round/number   r
-             :round/next?    true
-             :round/final?   (<= r (or (inc (:concluded-round/r cr)) 1))
-             :round/wc->sbcs {xc (with-meta #{xc} xc-stake)}
-             :round/cr       cr))
+      (let [?spx-round     (some-> ?spx (->round cr)) ;; can be passed in as args, also perhaps no need to memoize
+            ?opx-round     (some-> ?opx (->round cr))
+            both-eligible? (= (:round/number ?spx-round)
+                              (:round/number ?opx-round))
 
-          (let [both-eligible? (= (:round/number ?spx-round)
-                                  (:round/number ?opx-round))
-                max-p-round    (max-key :round/number ?opx-round ?spx-round)
-                acc            (if both-eligible?
-                                 (-> ?spx-round :round/wc->sbcs)
-                                 (if (identical? max-p-round ?opx-round)
-                                   (hash-map xc (with-meta #{xc} xc-stake)) ;; we're continuing opx-round, become a witness
-                                   (hash-map)))
-                to-reduce      (if both-eligible?
-                                 (-> ?opx-round :round/wc->sbcs)
-                                 (:round/wc->sbcs max-p-round))
+            max-p-round (max-key :round/number ?opx-round ?spx-round)
+            max-p-r     (-> max-p-round :round/number)
 
-                wc->sbcs
-                ;; Not pretty, but pretty efficient
-                (reduce (fn [wc->sbcs-acc [wc op-sbcs]]
-                          (let [sbcs-acc (get wc->sbcs-acc wc)]
-                            (if (true? sbcs-acc)
-                              wc->sbcs-acc
+            [acc to-reduce] (cond
+                              both-eligible?
+                              [(-> ?spx-round :round/w->sbcs)
+                               (-> ?opx-round :round/w->sbcs)]
 
-                              (if (true? op-sbcs)
-                                (let [new-wcs-stake (+ (meta wc->sbcs-acc) (get stake-map wc))]
-                                  (if (> new-wcs-stake many-stake)
-                                    (reduced true)
-                                    (-> wc->sbcs-acc
-                                        (assoc wc true)
-                                        (with-meta new-wcs-stake))))
+                              (identical? max-p-round ?spx-round)
+                              [(-> ?spx-round :round/w->sbcs)
+                               nil]
 
-                                (if (hash= sbcs-acc op-sbcs)
-                                  wc->sbcs-acc
+                              (identical? max-p-round ?opx-round)
+                              [(-> ?opx-round :round/w->sbcs
+                                   (->> (map-vals (fn [_op-sbcs] self-sbcs)))
+                                   (assoc x self-sbcs)
+                                   (cond->
+                                       (true? self-sbcs) (vary-meta + (get stake-map xc))))
+                               (-> ?opx-round :round/w->sbcs)])
 
-                                  ;; carry on compute from previous biggest sbcs
-                                  (let [sbcs-acc       (or sbcs-acc (with-meta #{xc} xc-stake))
-                                        sbcs-acc-count (count sbcs-acc)
-                                        op-sbcs-count  (count op-sbcs)
-                                        biggest        (if (> sbcs-acc-count op-sbcs-count)
-                                                         sbcs-acc
-                                                         op-sbcs)
-                                        smallest       (if (> sbcs-acc-count op-sbcs-count)
-                                                         op-sbcs
-                                                         sbcs-acc)
-                                        new-sbcs-acc
-                                        (reduce (fn [biggest-sbcs-acc sbc]
-                                                  (if (biggest-sbcs-acc sbc)
-                                                    biggest-sbcs-acc
-                                                    (let [new-biggest-sbcs-acc-stake (+ (meta biggest-sbcs-acc) (get stake-map sbc))]
-                                                      (if (> new-biggest-sbcs-acc-stake many-stake)
-                                                        (reduced true)
-                                                        (-> biggest-sbcs-acc
-                                                            (conj sbc)
-                                                            (with-meta new-biggest-sbcs-acc-stake))))))
-                                                biggest
-                                                smallest)]
-                                    (if (true? new-sbcs-acc)
-                                      (let [new-wcs-stake (+ (meta wc->sbcs-acc) (get stake-map wc))]
-                                        (if (> new-wcs-stake many-stake)
-                                          (reduced true)
-                                          (-> wc->sbcs-acc
-                                              (assoc wc true)
-                                              (with-meta new-wcs-stake))))
-                                      (assoc wc->sbcs-acc wc new-sbcs-acc))))))))
-                        acc
-                        to-reduce)
-                round-next?  (true? wc->sbcs)
-                r            (if round-next? (inc max-p-r) max-p-r)
-                round-final? (<= r (or (inc (:concluded-round/r cr)) 1))]
+            w->sbcs
+            ;; Not pretty, but pretty efficient
+            (reduce (fn [w->sbcs-acc [w sbcs]]
+                      (let [?sbcs-acc (get w->sbcs-acc w)]
+                        (cond (true? ?sbcs-acc)
+                              w->sbcs-acc
 
-            (hash-map
-             :round/event    x
-             :round/number   r
-             :round/next?    round-next?
-             :round/final?   round-final?
-             :round/wc->sbcs (if round-next?
-                               {xc (with-meta #{xc} xc-stake)}
-                               wc->sbcs)
-             :round/cr       cr)))))))
+                              (true? sbcs)
+                              (-> w->sbcs-acc
+                                  (assoc w true)
+                                  (vary-meta + (get stake-map (creator w))))
+
+                              (nil? ?sbcs-acc)
+                              (let [new-sbcs (cond-> sbcs
+                                               (not (sbcs xc)) (add-sbc xc stake-map))]
+                                (cond-> (assoc w->sbcs-acc w new-sbcs)
+                                  (true? new-sbcs) (vary-meta + (get stake-map (creator w)))))
+
+                              (and (= (count ?sbcs-acc) (count sbcs))
+                                   (every? ?sbcs-acc sbcs))
+                              ;; (= ?sbcs-acc sbcs)
+                              w->sbcs-acc
+
+                              :else
+                              ;; carry on compute from previous biggest sbcs
+                              (let [sbcs-acc       ?sbcs-acc
+                                    sbcs-acc-count (count sbcs-acc)
+                                    sbcs-count     (count sbcs)
+                                    biggest        (if (> sbcs-acc-count sbcs-count)
+                                                     sbcs-acc
+                                                     sbcs)
+                                    smallest       (if (> sbcs-acc-count sbcs-count)
+                                                     sbcs
+                                                     sbcs-acc)
+                                    new-sbcs-acc
+                                    (reduce (fn [biggest-sbcs-acc sbc]
+                                              (if (biggest-sbcs-acc sbc)
+                                                biggest-sbcs-acc
+                                                (let [new-biggest-sbcs-acc (add-sbc biggest-sbcs-acc sbc stake-map)]
+                                                  (if (true? new-biggest-sbcs-acc)
+                                                    (reduced true)
+                                                    new-biggest-sbcs-acc))))
+                                            biggest
+                                            smallest)]
+                                (cond-> (assoc w->sbcs-acc w new-sbcs-acc)
+                                  (true? new-sbcs-acc) (vary-meta + (get stake-map (creator w))))))))
+                    acc
+                    to-reduce)
+            round-next?     (-> w->sbcs meta (> many-stake))
+            r               (cond-> max-p-r
+                              round-next? inc)
+            round-final?    (r+cr->final-round? r cr)
+            ;; prev round ws, not BFT, as equivocation is not taken into account
+            strongly-see-ws (if round-next?
+                              (->> w->sbcs
+                                   (filter (comp true? second))
+                                   (map first)
+                                   set)
+                              (some-> max-p-round :round/strongly-see-ws))]
+
+        (hash-map
+         :round/event   x
+         :round/number  r
+         :round/next?   round-next?
+         :round/final?  round-final?
+         :round/w->sbcs (if round-next?
+                          self-w->sbcs
+                          w->sbcs)
+         :round/strongly-see-ws strongly-see-ws
+         :round/cr      cr)))))
 
 (defn ->round-number
   [x cr]
@@ -697,6 +783,7 @@
         (self-parent  x) (set/union (round-witnesses (self-parent  x) r cr))
         (other-parent x) (set/union (round-witnesses (other-parent x) r cr)))))
 
+#_
 (defn* ^:memoizing ->round-witness->seen-by-creators
   "Round r witnesses to seen by creator map, as known to x, based on cr."
   [x r cr]
@@ -763,10 +850,11 @@
         (vote-coin-flip? x y cr) (vote-coin-flip x y cr)
         :else                    (vote-for-majority x y cr)))
 
+#_
 (defn* ^:memoizing ->votes
   "Votes on fame of y from witnesses seen by many in the round before x, based on concluded-round."
   [x y cr]
-  ;; TOOD switch to event->creator->unique-tip?
+  ;; TOOD can lookup from round-info :round/strongly-seen-ws
   (let [rw->sbcs  (->round-witness->seen-by-creators x (dec (->round-number x cr)) cr)
         stake-map (concluded-round->stake-map cr)]
     ;; old TODO switch to transduce
@@ -778,14 +866,22 @@
                                       (> many-stake))))
          (map (fn [[rw _sbcs]] (->vote rw y cr))))))
 
+(defn* ^:memoizing ->votes
+  "Votes on fame of y from witnesses seen by many in the round before x, based on concluded-round."
+  [x y cr]
+  (when-not (witness? x cr) (js* "debugger;"))
+  (let [{:round/keys [strongly-see-ws]} (->round x cr)]
+    (->> strongly-see-ws
+         (map (fn [ssw] (->vote ssw y cr))))))
+
 ;; TODO maybe switch to transduce
-(defn votes-stake-true  [x y ?cr] (->> (->votes x y ?cr) (filter :vote/value) (map :vote/stake) (reduce + 0)))
-(defn votes-stake-false [x y ?cr] (->> (->votes x y ?cr) (remove :vote/value) (map :vote/stake) (reduce + 0)))
+(defn votes-stake-true  [x y cr] (->> (->votes x y cr) (filter :vote/value) (map :vote/stake) (reduce + 0)))
+(defn votes-stake-false [x y cr] (->> (->votes x y cr) (remove :vote/value) (map :vote/stake) (reduce + 0)))
 
 (defn votes-stake-fract-true
-  [x y ?cr]
-  (let [stake-true  (votes-stake-true x y ?cr)
-        stake-false (votes-stake-false x y ?cr)]
+  [x y cr]
+  (let [stake-true  (votes-stake-true x y cr)
+        stake-false (votes-stake-false x y cr)]
     (/ stake-true
        (max 1 (+ stake-true stake-false)))))
 
@@ -815,6 +911,7 @@
 
 ;; dang, do I check that learned event is seen by everybody?
 ;; good time to ditch :creation-time in favor of depth?
+#_
 (defn* ^:memoizing ->event-to-receive->learned-event ;; will slowdown over time due to mem lookup
   [x ->receivable? ->to-receive?]
   (if-not (->receivable? x)
@@ -832,6 +929,7 @@
         :always           persistent!))))
 
 ;; needs refactoring, does redundant work
+#_
 (defn* concluded-round->event-to-receive->learned-events
   [cr]
   (let [cr-r     (:concluded-round/r cr)
@@ -920,9 +1018,9 @@
                 (let [ufws                              (->> votes
                                                              (filter :vote/value)
                                                              (map :vote/votee))
-                      creator->uniique-tip-seq          (->> ufws (map event->creator->unique-tip))
-                      received-creators                 (apply set/intersection (map (comp set keys) creator->uniique-tip-seq))
-                      creator->received-unique-tip      (->> creator->uniique-tip-seq
+                      creator->unique-tip-seq           (->> ufws (map event->creator->unique-tip))
+                      received-creators                 (apply set/intersection (map (comp set keys) creator->unique-tip-seq))
+                      creator->received-unique-tip      (->> creator->unique-tip-seq
                                                              (map #(select-keys % received-creators))
                                                              (apply merge-with min-sp))
                       prev-creator->received-unique-tip (:concluded-round/creator->received-unique-tip cr)
@@ -1139,10 +1237,11 @@
                  ?prev-received-event))))
 
 (def concluded-round->stake-map cr-stake-map)
+(def cr->stake-map concluded-round->stake-map)
 
 ;; --------------- Stake ----------------
-(def total-stake 99)
-(def many-stake (-> total-stake (* 2) (/ 3))) ;; TODO rewrite to supermajority - (N+F)/2
+(def total-stake 100)
+(def many-stake 50 #_(-> total-stake (* 2) (/ 3))) ;; TODO rewrite to supermajority - (N+F)/2
 
 (def db->stake-map :stake-map)
 (def cr->db cr-db)
@@ -1243,53 +1342,53 @@
       (is (= 1 (-> a-e2-cr :concluded-round/db :counter))))))
 
 
-(defn* ^:memoizing event->?latest-tx-event [event]
+(defn* ^:memoizing event->?sp-tip-tx-event [event]
   (if (some? (tx event))
     event
-    (some-> (self-parent event) event->?latest-tx-event)))
+    (some-> (self-parent event) event->?sp-tip-tx-event)))
 
 #_
-(defn* ^:memoizing event->creator->tip-tx-event [{:event/keys [creator tx self-parent other-parent] :as event}]
+(defn* ^:memoizing event->creator->sp-tip-tx-event [{:event/keys [creator tx self-parent other-parent] :as event}]
   (cond-> (or (merge-with max-sp
-                          (some-> self-parent event->creator->tip-tx-event)
-                          (some-> other-parent event->creator->tip-tx-event))
+                          (some-> self-parent event->creator->sp-tip-tx-event)
+                          (some-> other-parent event->creator->sp-tip-tx-event))
               (hash-map))
     tx
     (assoc creator event)))
 
-(defn* ^:memoizing event->creator->tip-tx-event [event]
+(defn* ^:memoizing event->creator->sp-tip-tx-event [event]
   (->> event
        event->creator->unique-tip
-       (filter-map-vals event->?latest-tx-event)))
+       (filter-map-vals event->?sp-tip-tx-event)))
 
-(defn* ^:memoizing event->creator->tip-tx-event-received [event]
+(defn* ^:memoizing event->creator->sp-tip-tx-event-received [event]
   (let [{:concluded-round/keys [creator->received-unique-tip]} (->concluded-round event)]
     (->> creator->received-unique-tip
-         (filter-map-vals event->?latest-tx-event))))
+         (filter-map-vals event->?sp-tip-tx-event))))
 
-(defn* ^:memoizing event->not-received-tx-events [event]
-  (let [creator->tip-tx-event          (-> event event->creator->tip-tx-event)
-        creator->tip-tx-event-received (-> event event->creator->tip-tx-event-received)]
-    (->> creator->tip-tx-event
-         (filter (fn [[creator tip-tx-event]] (not (hash= tip-tx-event (-> creator creator->tip-tx-event-received)))))
+(defn* ^:memoizing event->sp-tip-tx-events-not-received [event]
+  (let [creator->sp-tip-tx-event          (-> event event->creator->sp-tip-tx-event)
+        creator->sp-tip-tx-event-received (-> event event->creator->sp-tip-tx-event-received)]
+    (->> creator->sp-tip-tx-event
+         (filter (fn [[creator sp-tip-tx-event]] (not (hash= sp-tip-tx-event (-> creator creator->sp-tip-tx-event-received)))))
          (map second))))
 
 #_
-(defn* ^:memoizing event->creator->tip-tx-event-received [event]
+(defn* ^:memoizing event->creator->sp-tip-tx-event-received [event]
   (let [cr (->concluded-round event)]
     (->> cr
          :concluded-round/es-r
-         (reduce (fn [cr->creator->tip-tx-events-acc {:event/keys [creator tx] :as event-received}]
-                   (cond-> cr->creator->tip-tx-events-acc
+         (reduce (fn [cr->creator->sp-tip-tx-events-acc {:event/keys [creator tx] :as event-received}]
+                   (cond-> cr->creator->sp-tip-tx-events-acc
                      (and tx
-                          (let [?current-creator-tip-tx-event (get cr->creator->tip-tx-events-acc creator)]
-                            (or (nil? ?current-creator-tip-tx-event)
-                                (< (event->index ?current-creator-tip-tx-event) (event->index event-received)))))
+                          (let [?current-creator-sp-tip-tx-event (get cr->creator->sp-tip-tx-events-acc creator)]
+                            (or (nil? ?current-creator-sp-tip-tx-event)
+                                (< (event->index ?current-creator-sp-tip-tx-event) (event->index event-received)))))
                      (assoc creator event-received)))
                  ;; could have cr in args instead of event so less traveling keys, but less pretty interface for app.topic that uses it
                  (or (some-> (:concluded-round/prev-concluded-round cr)
                              :concluded-round/witness-concluded
-                             event->creator->tip-tx-event-received)
+                             event->creator->sp-tip-tx-event-received)
                      (hash-map))))))
 
 

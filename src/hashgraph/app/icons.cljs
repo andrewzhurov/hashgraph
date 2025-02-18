@@ -299,28 +299,28 @@
                       (->> (map clojure.string/capitalize)))))
 
 (defn icon [icon-style icon-key & {:keys [size color]
-                                   :or {size  :1x
-                                        color "black"}}]
+                                   :or   {size  :1x
+                                          color "black"}}]
   (let [icon-opts {:size  (name size)
                    :style {:color color}}]
     (case icon-key
-      :transfer (transfer icon-opts)
+      :transfer          (transfer icon-opts)
       :poor-connectivity (poor-connectivity icon-opts)
-      :verified (verified icon-opts)
-      :verified2 (verified2 icon-opts)
-      :send      (send icon-opts)
-      :merge    (merge-icon icon-opts)
-      :link-building (link-building icon-opts)
-      :network-form (network-form icon-opts)
-      :interlink    (interlink icon-opts)
-      :dna-3        (dna-3 icon-opts)
-      :stack        (stack icon-opts)
+      :verified          (verified icon-opts)
+      :verified2         (verified2 icon-opts)
+      :send              (send icon-opts)
+      :merge             (merge-icon icon-opts)
+      :link-building     (link-building icon-opts)
+      :network-form      (network-form icon-opts)
+      :interlink         (interlink icon-opts)
+      :dna-3             (dna-3 icon-opts)
+      :stack             (stack icon-opts)
 
       (let [icon-name (icon-key->icon-name icon-key)
-            icon (case icon-style
-                   :solid   (goog.object/get fas icon-name)
-                   :regular (goog.object/get far icon-name)
-                   :brands  (goog.object/get fabr icon-name))]
+            icon      (case icon-style
+                        :solid   (goog.object/get fas icon-name)
+                        :regular (goog.object/get far icon-name)
+                        :brands  (goog.object/get fabr icon-name))]
         (js/React.createElement
          FontAwesomeIcon
          (-> icon-opts

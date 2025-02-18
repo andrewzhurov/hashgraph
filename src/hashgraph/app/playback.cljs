@@ -190,8 +190,8 @@
 
 (defn viz-scroll-to-event! [evt]
   (let [evt-pos            (hga-view/evt->y evt)
-        evt-viz-scroll-pos (- (l evt-pos) hga-view/playback-size)]
-    (@hga-state/*viz-scroll! (l evt-viz-scroll-pos) :smooth? true)))
+        evt-viz-scroll-pos (- evt-pos hga-view/playback-size)]
+    (@hga-state/*viz-scroll! evt-viz-scroll-pos :smooth? true)))
 
 (defn rewind-all! [& {:keys [smooth?]
                       :or {smooth? true}}]

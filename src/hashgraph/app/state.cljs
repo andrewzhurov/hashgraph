@@ -14,11 +14,11 @@
 (defonce *playback-attached-to-viz-scroll? (atom true))
 (defonce *playback-playing? (atom false))
 
-(defonce *show-members? (atom false))
-(defonce *show-rounds? (atom false))
-(defonce *show-witnesses? (atom false))
-(defonce *show-stake-map? (atom false))
-(defonce *show-votes? (atom false))
+(def *show-members? (atom false))
+(def *show-rounds? (atom false))
+(def *show-witnesses? (atom false))
+(def *show-stake-map? (atom false))
+(def *show-votes? (atom false))
 
 (defonce *override-viz-height (atom nil))
 
@@ -75,12 +75,11 @@
 
 (deflda *aid->avatar [*aid->seed]
   (fn [aid->seed]
-    (l [:derive-*aid->avatar aid->seed])
-    (l (->> aid->seed
-            (map-vals (fn [seed]
-                        (case (rem seed 2)
-                          0 hga-avatars/male-avatar
-                          1 hga-avatars/female-avatar)))))))
+    (->> aid->seed
+         (map-vals (fn [seed]
+                     (case (rem seed 2)
+                       0 hga-avatars/male-avatar
+                       1 hga-avatars/female-avatar))))))
 
 (deflda *aid->color [*aid->seed]
   (fn [aid->seed]

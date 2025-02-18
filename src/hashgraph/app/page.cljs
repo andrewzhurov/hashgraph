@@ -8,6 +8,7 @@
    [cljs.math :refer [round floor ceil pow]]
    [garden.selectors :as gs]
    [garden.stylesheet :refer [at-keyframes]]
+   [garden.core :refer [css]]
    [garden.color :as gc]
    [garden.units :refer [px]]
    [goog.string :refer [format]]
@@ -32,7 +33,7 @@
    [hashgraph.app.timing :as hga-timing]
    [hashgraph.app.utils :as hga-utils]
    [hashgraph.utils.core
-    :refer [log! merge-attr-maps color-rgba-str timing *->time*]
+    :refer [log! merge-attr-maps color-rgba-str timing *->time* not-neg bake-alpha rgb->css-str]
     :refer-macros [defn* l letl]
     :as utils]
    [hashgraph.main :as hg]
@@ -187,21 +188,17 @@
 
 (def vote-circumferance-start+for+end
   (memoize
-   (fn [member-name stake-map]
-     (if (nil? member-name)
-       [0 0 0]
-       (let [prev-voter-idx                          (-> member-name hg-members/member-name->person :member/idx dec)
-             prev-voter-name                         (some (fn [person] (when (= (:member/idx person) prev-voter-idx)
-                                                                          (:member/name person)))
-                                                           hg-members/people)
-             [_ _ prev-voter-end-vote-circumferance] (vote-circumferance-start+for+end prev-voter-name stake-map)
-             start-vote-circumferance                prev-voter-end-vote-circumferance
-             stake                                   (get stake-map member-name)
-             vote-circumferance                      (-> hga-view/vote-circumferance
-                                                         (/ hg/total-stake)
-                                                         (* stake))
-             end-vote-circumferance                  (+ start-vote-circumferance vote-circumferance)]
-         [start-vote-circumferance vote-circumferance end-vote-circumferance])))))
+   (fn [creators< creator stake-map]
+     (let [[_ _ prev-voter-end-vote-circumferance] (if-let [prev-creator (nth creators< (dec (-indexOf creators< creator)) nil)]
+                                                     (vote-circumferance-start+for+end creators< prev-creator stake-map)
+                                                     [0 0 0])
+           start-vote-circumferance                prev-voter-end-vote-circumferance
+           stake                                   (get stake-map creator)
+           vote-circumferance                      (-> hga-view/vote-circumferance
+                                                       (/ hg/total-stake)
+                                                       (* stake))
+           end-vote-circumferance                  (+ start-vote-circumferance vote-circumferance)]
+       [start-vote-circumferance vote-circumferance end-vote-circumferance]))))
 
 
 (defcs event-witness-view <
@@ -227,14 +224,14 @@
                                         #_#_:on-mouse-enter #(when-not @*paths
                                                            (reset! *paths (hg/->strongly-see-r-paths event cr (dec number))))}])]))
 
+(defonce *topic-path->creator->color (atom (hash-map)))
 (defcs event-votes-view <
   hga-utils/static-by-hashes
   rum/reactive
-  [_ round votes witness? event]
+  [_ topic-path round votes witness? event]
   ;; :member/color-rgb is missing
-  #_
   (let [round-final? (:round/final? round)
-        round-cr (:round/cr round)]
+        round-cr     (:round/cr round)]
     [:g.votes-wrapper {:key "vote-wrapper"
                        :class [(when (and witness? round-final? (rum/react hga-state/*show-stake-map?)) "present")]}
      (when (and witness? round-final?)
@@ -243,8 +240,8 @@
              ?member-name->vote (when voted? (->> votes (into (hash-map) (map (fn [vote] [(-> vote :vote/voter hg/creator) vote])))))]
          [:g.votes (merge {:key "votes"} (when-not voted? (inspectable stake-map)))
           (for [[stake-holder stake-amount] stake-map]
-            (let [stake-color-rgb                                 (-> stake-holder hg-members/member-name->person :member/color-rgb)
-                  [start-vote-circumferance vote-circumferance _] (vote-circumferance-start+for+end stake-holder stake-map)
+            (let [stake-color                                     (rum/react (rum/cursor-in *topic-path->creator->color [topic-path stake-holder]))
+                  [start-vote-circumferance vote-circumferance _] (vote-circumferance-start+for+end (-> stake-map keys sort vec) stake-holder stake-map)
                   ?vote                                           (get ?member-name->vote stake-holder)
                   ?vote-value                                     (:vote/value ?vote)]
               [:g.vote-wrapper (merge {:key stake-holder}
@@ -255,10 +252,10 @@
                          :stroke-width     hga-view/vote-stroke-width
                          :stroke-dasharray (str "0 " start-vote-circumferance " " vote-circumferance " " hga-view/vote-circumferance)
                          :style            {:stroke (cond (not voted?)
-                                                          (color-rgba-str stake-color-rgb 0.33)
+                                                          (-> stake-color (assoc :alpha 0.33) bake-alpha rgb->css-str)
 
                                                           (and voted? ?vote-value)
-                                                          (color-rgba-str stake-color-rgb 1)
+                                                          (-> stake-color rgb->css-str)
 
                                                           :else
                                                           "lightgray")}})]]))]))]))
@@ -295,6 +292,8 @@
      (hga-icons/icon :solid :at :color color)
      :propose
      (hga-icons/icon :regular :circle-check :color color)
+     :dispose
+     (hga-icons/icon :regular :circle-xmark :color color)
      :rotate
      (hga-icons/icon :solid :key :color color)
      (:inform-novel-ke :graft-ke)
@@ -336,7 +335,7 @@
          round-final? :round/final?
          round-next?  :round/next?
          #_#_round-cr     :round/cr} round]
-    (when (not (zero? (l opacity)))
+    (when (not (zero? opacity))
       [:g {:opacity opacity}
 
        (let [ref-opacity (- 1 fill-opacity)
@@ -364,11 +363,9 @@
                        :height (* hga-view/wit-r 2)
                        :style  {:transform (translate-based-on-view-mode x y)}}
 
-        #_
         (event-witness-view round witness? event)
 
-        #_
-        (event-votes-view round votes witness? event)
+        (event-votes-view topic-path round votes witness? event)
 
         ;; always rendering white background to hide refs
         (let [{:keys [red green blue] :as fill} (js-map/get view-state :fill)
@@ -388,9 +385,8 @@
                                       :fill  (str "rgba(" red "," green "," blue "," fill-opacity ")")}])
            (when-let [tx ?tx]
              [:g.tx-wrapper {:style {:scale "0.6"}}
-              (event-tx-view tx {:color (gc/hsl->hex (gc/lighten (gc/hsl 0 0 0) (* 100 (l fill-opacity))))})])])
+              (event-tx-view tx {:color (gc/hsl->hex (gc/lighten (gc/hsl 0 0 0) (* 100 fill-opacity)))})])])
 
-        #_
         (event-round-view round)]])))
 
 
@@ -426,7 +422,6 @@
 (defonce ^:dynamic aid->color nil)
 
 (defn* ^:memoizing ->did-peer->member-aid [member-aid->did-peers]
-  (l member-aid->did-peers)
   (->> member-aid->did-peers
        (reduce (fn [did-peer->member-aid-acc [member-aid did-peers]]
                  (->> did-peers
@@ -445,23 +440,22 @@
             ?last-re               (some-> ?last-cr :concluded-round/last-received-event)
             ?db                    (some-> ?last-cr hg/cr->db)
             ?member-aid->did-peers (some-> ?db :member-aid->did-peers)
-            did-peer->member-aid   (l (-> ?member-aid->did-peers ->did-peer->member-aid))
+            did-peer->member-aid   (-> ?member-aid->did-peers ->did-peer->member-aid)
             event->received-event  (hga-state/?received-event->event->received-event ?last-re)
             ->event-info
             (fn [event]
-              (let [#_#_{r        :round/number
+              (let [{r        :round/number
                      r-final? :round/final?
                      r-cr     :round/cr :as round} (hg/->round event ?last-cr)
 
-                    #_#_witness?            (hg/witness? event r-cr)
-                    #_#_will-receive-votes? (and witness? r-final?)
-                    #_#_receives-votes?     (and will-receive-votes? ?main-tip
-                                             (> (hg/rounds-diff ?main-tip event cr)
-                                                (hg/cr->delay cr))
-                                             (hg/ancestor? ?main-tip event))
-                    #_#_?cr                 (when receives-votes?
-                                          (cr+r->?cr ?last-cr r))
-                    #_#_
+                    witness?            (hg/witness? event r-cr)
+                    will-receive-votes? (and witness? r-final?)
+                    receives-votes?     (and will-receive-votes? ?main-tip
+                                                 (> (hg/rounds-diff ?main-tip event cr)
+                                                    (hg/cr->delay cr))
+                                                 (hg/ancestor? ?main-tip event))
+                    ?cr                 (when receives-votes?
+                                              (cr+r->?cr ?last-cr r))
                     ?votes              (when receives-votes?
                                           (if-let [cr ?cr]
                                             (hg/->votes (:concluded-round/witness-concluded cr) event (:concluded-round/prev-concluded-round cr))
@@ -469,14 +463,13 @@
                     ?received-event     (event->received-event event)
                     color               (or (-> event hg/creator did-peer->member-aid aid->color color-rgba-str)
                                             "black")
-                    event-info (cond-> {:event-info/color    color
-                                        :event-info/event    event}
-                                 #_#_:event-info/round    round
-                                 #_#_witness?        (assoc :event-info/witness? witness?)
-                                 #_#_?cr             (assoc :event-info/cr ?cr)
-                                 #_#_
-                                 ?votes          (assoc :event-info/votes ?votes)
-                                 ?received-event (assoc :event-info/received-event ?received-event))]
+                    event-info (cond-> {:event-info/color color
+                                        :event-info/event event
+                                        :event-info/round round}
+                                 witness?          (assoc :event-info/witness? witness?)
+                                 ?cr               (assoc :event-info/cr ?cr)
+                                 ?votes            (assoc :event-info/votes ?votes)
+                                 ?received-event   (assoc :event-info/received-event ?received-event))]
                 event-info))]
         [(->> rewinded<
               (take 10)
@@ -490,6 +483,43 @@
               (map ->event-info))
          ]))))
 
+(def viz-controls-styles
+  [[:#viz-controls {:position       :fixed
+                    :right          (px hga-view/scrollbar-height)
+                    :top            (px 0)
+                    :display        :flex
+                    :flex-direction :row
+                    :opacity        "0%"
+                    :transition     "opacity 0.3s"}
+    [:&:hover {:opacity "100%"}]
+    [:.viz-control {:width            (px 24)
+                    :height           (px 24)
+                    :display          :flex
+                    :align-content    :center
+                    :justify-content  :center
+                    :flex-wrap        :wrap
+                    :margin           (px 6)
+                    :border           "1px solid gray"
+                    :border-radius    (px 5)
+                    :cursor           :pointer
+                    :background-color "white"
+                    :transition       "background-color 0.3s"}
+     [:&.toggled {:background-color "#eef6fd"}]]]])
+
+(reg-styles! ::viz-controls viz-controls-styles)
+
+(defc viz-controls-view < rum/reactive []
+  [:div#viz-controls
+   ;; [:style (css viz-controls-styles)]
+   (for [[*state label title] [[hga-state/*show-rounds? "R" "Toggle rounds viz"]
+                               [hga-state/*show-witnesses? "W" "Toggle witnesses viz"]
+                               [hga-state/*show-stake-map? "S" "Toggle stake viz"]
+                               [hga-state/*show-votes? "V" "Toggle votes viz"]]]
+     [:div.viz-control {:class    (when (rum/react *state) "toggled")
+                        :on-click #(swap! *state not)
+                        :title    title}
+      label])])
+
 (def *viz-dom-node (atom nil))
 (defc viz < rum/reactive
   {:did-mount (fn [state]
@@ -497,18 +527,19 @@
                 state)}
   [topic-path viz-width viz-height]
   (let [[behind-evt-infos> played-evt-infos> rewinded-evt-infos>] (rum/react *rendered-evt-infos)]
-    [:svg#viz {:style {:min-width  viz-width
-                       :width      viz-width
-                       :height     viz-height
-                       :transition "min-width 0.4s, width 0.4s"}}
-     [:g.events-view
-      (for [evt-info rewinded-evt-infos>]
-        (event-view topic-path evt-info))
-      (for [evt-info (l played-evt-infos>)]
-        (event-view topic-path evt-info))
-      (for [evt-info behind-evt-infos>]
-        (event-view topic-path evt-info))]
-     (l [:g.done-viz-render])]))
+    [:<>
+     (viz-controls-view)
+     [:svg#viz {:style {:min-width  viz-width
+                        :width      viz-width
+                        :height     viz-height
+                        :transition "min-width 0.4s, width 0.4s"}}
+      [:g.events-view
+       (for [evt-info rewinded-evt-infos>]
+         (event-view topic-path evt-info))
+       (for [evt-info played-evt-infos>]
+         (event-view topic-path evt-info))
+       (for [evt-info behind-evt-infos>]
+         (event-view topic-path evt-info))]]]))
 
 (defc menu-controls []
   [:div#menu-controls

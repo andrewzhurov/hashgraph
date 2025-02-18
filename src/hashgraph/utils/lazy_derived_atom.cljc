@@ -1,5 +1,5 @@
 (ns hashgraph.utils.lazy-derived-atom
-  (:require [hashgraph.utils.core :refer [hash= logging-enabled?] :refer-macros [timed]]
+  (:require [hashgraph.utils.core :refer [hash= logging-enabled?] :refer-macros [timed nl]]
             [clojure.test :refer [deftest testing is are run-tests]]
             :reload-all))
 
@@ -45,9 +45,9 @@
                (when (not (hash= old-state new-state))
                  (set! **state new-state)
                  (when (some-> (meta sym) :log)
-                   (js/console.log :<= (into {} (map (fn [ref-sym new-arg] [ref-sym new-arg]) (-> sym meta :ref-syms) new-args)))
-                   (js/console.log :took t)
-                   (js/console.log :=> {(with-meta sym nil) new-state}))
+                   (nl :<= (into {} (map (fn [ref-sym new-arg] [ref-sym new-arg]) (-> sym meta :ref-syms) new-args)))
+                   (nl :took t)
+                   (nl :=> {(with-meta sym nil) new-state}))
                  (-notify-watches o old-state new-state)))))
 
          IDeref

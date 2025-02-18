@@ -7,6 +7,7 @@
             [taoensso.tufte :as tufte]
             [rum.core :as rum]
             [malli.core :as m]
+            [garden.color :as gc]
             #?(:cljs [cljs.analyzer :as ana])))
 #?(:clj (alias 'ana 'cljs.analyzer))
 
@@ -22,7 +23,7 @@
 (def ^:dynamic *mem* nil)
 (def ^:dynamic *from-mem* nil)
 
-(def ^:dynamic logging-enabled? true)
+(def ^:dynamic logging-enabled? false)
 (def ^:dynamic default-tracing-enabled? false)
 #?(:dev (set! default-tracing-enabled? false))
 
@@ -93,6 +94,13 @@
   (if logging-enabled?
     `(let [res# ~expr]
        (log! [(quote ~expr)] res#)
+       res#)
+    expr))
+
+(defmacro nl "Named log" [named expr]
+  (if logging-enabled?
+    `(let [res# ~expr]
+       (log! ~named res#)
        res#)
     expr))
 
@@ -304,6 +312,20 @@
                                                                                ^:l {3 3} ^:r {3 3}])]
        (is (= out [{1 1} {2 2} {3 3}]))
        (is (= (map meta out) '({:l true} {:r true} {:l true :r true}))))))
+
+(defn distinct-by [by coll]
+  (let [**bys (volatile! #{})]
+    (reduce (fn [coll-acc el]
+              (let [el-by (by el)]
+                (if (@**bys el-by)
+                  coll-acc
+                  (do (vreset! **bys (conj @**bys el-by))
+                      (conj coll-acc el)))))
+            []
+            coll)))
+
+(deftest distinct-by-test
+  (is (= [{:a 1} {:a 2}] (distinct-by :a [{:a 1} {:a 1} {:a 2} {:a 1} {:a 2}]))))
 
 
 (defn partition-at-with [with coll]
@@ -526,6 +548,12 @@
     (conj ?coll el)
     (conj (set ?coll) el)))
 
+(defn disjs [?coll el]
+  (if (and (some? ?coll)
+           (set? ?coll))
+    (disj ?coll el)
+    (disj (set ?coll) el)))
+
 (defn conjv [?coll el]
   (conj (or ?coll []) el))
 
@@ -609,17 +637,19 @@
   (when-not (neg? num)
     num))
 
-(defn indexed [index-vec item]
-  (if-let [existing-item-idx (not-neg (-indexOf index-vec item))]
-    [index-vec existing-item-idx]
-    (let [new-index-vec (conj index-vec item)]
-      [new-index-vec (-indexOf new-index-vec item)])))
+#?(:cljs
+   (do
+     (defn indexed [index-vec item]
+       (if-let [existing-item-idx (not-neg (-indexOf index-vec item))]
+         [index-vec existing-item-idx]
+         (let [new-index-vec (conj index-vec item)]
+           [new-index-vec (-indexOf new-index-vec item)])))
 
-(deftest indexed-test
-  (is (= [[:a] 0]    (indexed [] :a)))
-  (is (= [[:a :b] 1] (indexed [:a] :b)))
-  (is (= [[:a :b] 0] (indexed [:a :b] :a)))
-  (is (= [[:a :b] 1] (indexed [:a :b] :b))))
+     (deftest indexed-test
+       (is (= [[:a] 0]    (indexed [] :a)))
+       (is (= [[:a :b] 1] (indexed [:a] :b)))
+       (is (= [[:a :b] 0] (indexed [:a :b] :a)))
+       (is (= [[:a :b] 1] (indexed [:a :b] :b))))))
 
 (defn mean [nums]
   (/ (reduce + nums) (count nums)))
@@ -809,6 +839,17 @@
                                                       (-> last-f-promise
                                                           (.then (fn [] (apply f args) (resolve true))))))))))))
 
+(defn bake-alpha [rgba]
+  (gc/rgba (-> (->> [(:red rgba) (:green rgba) (:blue rgba)]
+                    (mapv (fn [c]
+                            (let [rem-c   (- 255 c)
+                                  added-c (- rem-c (* rem-c (:alpha rgba)))]
+                              (+ c added-c)))))
+               (conj 1))))
+
+(defn rgb->css-str [{r :red g :green b :blue}]
+  (str "rgb(" r "," g "," b ")"))
+
 (def color-rgba-str
   (memoize
    (fn ([rgb-vec] (color-rgba-str rgb-vec 1))
@@ -941,9 +982,13 @@
                                 ;; in clojure it's an array may, so bashing in place no good
                                 ;; also, do we need hash-map here, given we store args as hashes anyways, js's map will do?
                                 `(transient (hash-map)))
-           ~->from-mem       (fn [~from-mem-args-sym] (get ~(if only-last? `(deref ~mem) mem)
-                                                           (~args->mem-k ~from-mem-args-sym) lookup-sentinel))
-           ~->in-mem?        (fn [in-mem-args#] (not (identical? (~->from-mem in-mem-args#) lookup-sentinel)))
+           ~->from-mem       (fn [& ~from-mem-args-sym]
+                               (l ~from-mem-args-sym)
+                               (get ~(if only-last? `(deref ~mem) mem)
+                                    (~args->mem-k ~from-mem-args-sym) lookup-sentinel))
+           ~->in-mem?        (fn [& in-mem-args#]
+                               (l in-mem-args#)
+                               (not (identical? (apply ~->from-mem in-mem-args#) lookup-sentinel)))
            f#                ~fn-form
            ~skip-warmup?-sym (volatile! false)]
 
