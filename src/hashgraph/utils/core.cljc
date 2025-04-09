@@ -736,7 +736,31 @@
   (is (= [1 '(2 #{3 4}) ['{#{5} 6}]]
          (map-prim inc [0 '(1 #{2 3}) ['{#{4} 5}]]))))
 
+(defmacro if-let*
+  [bindings true-body false-body]
+  (if (zero? (count bindings))
+    true-body
+    (let [first-binding (vec (take 2 bindings))
+          rest-bindings (vec (drop 2 bindings))]
+      (if (zero? (count rest-bindings))
+        `(clojure.core/if-let ~first-binding
+           ~true-body
+           ~false-body)
+        `(clojure.core/when-let ~first-binding
+           (if-let* ~rest-bindings ~true-body ~false-body))))))
 
+#_
+(deftest if-let*-test
+  (is (= :t (if-let* [] :t :f)))
+  (is (= :t (if-let* [a true] :t :f)))
+  (is (= :t (if-let* [a true b true] :t :f)))
+  (is (= 3 (if-let* [a 1 b 2 c (= 3 (+ a b))] c :f)))
+  (is (= :f (if-let* [a false] :t :f)))
+  (is (= :f (if-let* [a nil] :t :f)))
+  (is (= :f (if-let* [a true b false] :t :f)))
+  (is (= :f (if-let* [a false b true] :t :f)))
+  (let [*v (atom 0)]
+    (is (= 0 (do (if-let* [a false b (swap! *v inc)] :t :f) @*v)))))
 
 (defmacro when-let*
   [bindings & body]
