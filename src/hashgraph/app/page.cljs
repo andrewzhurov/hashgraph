@@ -224,11 +224,10 @@
                                         #_#_:on-mouse-enter #(when-not @*paths
                                                            (reset! *paths (hg/->strongly-see-r-paths event cr (dec number))))}])]))
 
-(defonce *topic-path->creator->color (atom (hash-map)))
 (defcs event-votes-view <
   hga-utils/static-by-hashes
   rum/reactive
-  [_ topic-path round votes witness? event]
+  [_ topic-path creator->color round votes witness? event]
   ;; :member/color-rgb is missing
   (let [round-final? (:round/final? round)
         round-cr     (:round/cr round)]
@@ -240,7 +239,7 @@
              ?member-name->vote (when voted? (->> votes (into (hash-map) (map (fn [vote] [(-> vote :vote/voter hg/creator) vote])))))]
          [:g.votes (merge {:key "votes"} (when-not voted? (inspectable stake-map)))
           (for [[stake-holder stake-amount] stake-map]
-            (let [stake-color                                     (rum/react (rum/cursor-in *topic-path->creator->color [topic-path stake-holder]))
+            (let [stake-color                                     (-> stake-holder creator->color)
                   [start-vote-circumferance vote-circumferance _] (vote-circumferance-start+for+end (-> stake-map keys sort vec) stake-holder stake-map)
                   ?vote                                           (get ?member-name->vote stake-holder)
                   ?vote-value                                     (:vote/value ?vote)]
@@ -316,17 +315,15 @@
     (str "translate(" y "px," x "px)")
     (str "translate(" x "px," y "px)")))
 
-(def event-view-key-fn {:key-fn (fn [_ {:event-info/keys [event]}] (-hash event))})
+(def event-view-key-fn {:key-fn (fn [_ _ {:event-info/keys [event]}] (-hash event))})
 (defcs event-view <
   event-view-key-fn
   hga-utils/static-by-hashes
   rum/reactive
-  (hga-transitions/mixin ::view-state    (fn [topic-path {:event-info/keys [event]}] [(hash topic-path) (hash event)]))
-  (hga-transitions/mixin ::sp-view-state (fn [topic-path {:event-info/keys [event]}] (when-let [sp (hg/self-parent event)] [(hash topic-path) (hash sp)])))
-  (hga-transitions/mixin ::op-view-state (fn [topic-path {:event-info/keys [event]}] (when-let [op (hg/other-parent event)] [(hash topic-path) (hash op)])))
-  [{::keys [view-state sp-view-state op-view-state]} topic-path {:event-info/keys [event color round witness? #_cr votes received-event] :as event-info}]
-  ;;(js/console.log event-info)
-  #_(log! [:render-event-view @hga-playback/*frame] (-hash event))
+  (hga-transitions/mixin ::view-state    (fn [topic-path _ {:event-info/keys [event]}] [(hash topic-path) (hash event)]))
+  (hga-transitions/mixin ::sp-view-state (fn [topic-path _ {:event-info/keys [event]}] (when-let [sp (hg/self-parent event)] [(hash topic-path) (hash sp)])))
+  (hga-transitions/mixin ::op-view-state (fn [topic-path _ {:event-info/keys [event]}] (when-let [op (hg/other-parent event)] [(hash topic-path) (hash op)])))
+  [{::keys [view-state sp-view-state op-view-state]} topic-path creator->color {:event-info/keys [event color round witness? #_cr votes received-event] :as event-info}]
   (let [x                        (js-map/get view-state :x)
         y                        (js-map/get view-state :y)
         opacity                  (or (js-map/get view-state :opacity) 0)
@@ -365,7 +362,7 @@
 
         (event-witness-view round witness? event)
 
-        (event-votes-view topic-path round votes witness? event)
+        (event-votes-view topic-path creator->color round votes witness? event)
 
         ;; always rendering white background to hide refs
         (let [{:keys [red green blue] :as fill} (js-map/get view-state :fill)
@@ -376,7 +373,7 @@
                            {:->inspected?   (fn [ips els]           (->> els (some (fn [el] (hga-inspector/->in ips el)))))
                             :->accented?    (fn [accented _ips els] (->> els (some (fn [el] (hga-inspector/->in accented el)))))})
            [:circle.event {:r            hga-view/evt-r
-                           :stroke       color
+                           :stroke       (-> event hg/creator creator->color rgb->css-str)
                            :stroke-width 1
                            :fill         "white"}]
            (when (> fill-opacity 0)
@@ -525,7 +522,7 @@
   {:did-mount (fn [state]
                 (reset! *viz-dom-node (rum/dom-node state))
                 state)}
-  [topic-path viz-width viz-height]
+  [topic-path creator->color viz-width viz-height]
   (let [[behind-evt-infos> played-evt-infos> rewinded-evt-infos>] (rum/react *rendered-evt-infos)]
     [:<>
      (viz-controls-view)
@@ -535,11 +532,11 @@
                         :transition "min-width 0.4s, width 0.4s"}}
       [:g.events-view
        (for [evt-info rewinded-evt-infos>]
-         (event-view topic-path evt-info))
+         (event-view topic-path creator->color evt-info))
        (for [evt-info played-evt-infos>]
-         (event-view topic-path evt-info))
+         (event-view topic-path creator->color evt-info))
        (for [evt-info behind-evt-infos>]
-         (event-view topic-path evt-info))]]]))
+         (event-view topic-path creator->color evt-info))]]]))
 
 (defc menu-controls []
   [:div#menu-controls
