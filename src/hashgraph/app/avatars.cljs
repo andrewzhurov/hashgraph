@@ -11,6 +11,9 @@
    [:svg.avatar.avatar--computer
     [:.outline {:stroke       :white
                 :stroke-width (px 5)}]]
+   [:svg.avatar.avatar--phone
+    [:.outline {:stroke       :white
+                :stroke-width (px 5)}]]
    ])
 
 (reg-styles! ::avatar avatar-styles)
@@ -79,6 +82,60 @@
            {:fill "#FCD09F" #_"#EFC59C",
             :d
             "M322.828,137.707c0,16.431-4.272,34.511-11.878,51.504c7.953,5.04,16.637,8.009,25.733,8.009 c38.089,0,68.965-52.094,68.965-90.193c0-38.089-30.876-68.956-68.965-68.956c-21.124,0-40.038,9.499-52.684,24.459 C307.484,79.28,322.828,106.737,322.828,137.707z"}]]]]]]]]])
+
+;; alt https://www.svgrepo.com/svg/247865/smartphone-mockup
+;; https://www.svgrepo.com/svg/262802/smartphone-iphone?edit=true
+(defn phone [color background-color]
+  [:svg.avatar.avatar--phone
+   {:version     "1.1",
+    :id          "Layer_1",
+    :xmlns       "http://www.w3.org/2000/svg",
+    :xmlns:xlink "http://www.w3.org/1999/xlink",
+    :viewBox     "0 0 451.277 451.277",
+    :xml:space   "preserve",
+    :fill        "#000000"}
+   [:g {:id "SVGRepo_bgCarrier", :stroke-width "0"}]
+   [:g
+    {:id              "SVGRepo_tracerCarrier",
+     :stroke-linecap  "round",
+     :stroke-linejoin "round"}]
+   [:g
+    {:id "SVGRepo_iconCarrier"}
+    [:circle
+     {:fill background-color,
+      :cx   "225.638",
+      :cy   "225.638",
+      :r    "225.638"}]
+    [:path.outline
+     {:fill "#324A5E" #_"#EBF0F3",
+      :d
+      "M300.324,96.355H150.953c-4.817,0-8.723,3.905-8.723,8.723v241.121c0,4.817,3.906,8.723,8.723,8.723 h149.371c4.817,0,8.723-3.905,8.723-8.723V105.078C309.047,100.261,305.141,96.355,300.324,96.355z"}]
+    [:rect
+     {:fill   color #_"#64798A"
+      :x      "156.334",
+      :y      "117.002",
+      :width  "138.598",
+      :height "193.961"}]
+    [:rect
+     {:fill   "#3A556A",
+      :x      "156.334",
+      :y      "304.077",
+      :width  "138.598",
+      :height "6.861"}]
+    [:g
+     [:path
+      {:fill "#64798A",
+       :d
+       "M225.637,344.955c-6.873,0-12.464-5.592-12.464-12.464c0-6.877,5.592-12.469,12.464-12.469 c6.875,0,12.467,5.592,12.467,12.469C238.105,339.364,232.512,344.955,225.637,344.955z M225.637,324.723 c-4.281,0-7.763,3.485-7.763,7.768c0,4.279,3.482,7.763,7.763,7.763c4.281,0,7.766-3.485,7.766-7.763 C233.403,328.207,229.919,324.723,225.637,324.723z"}]
+     [:path
+      {:fill "#64798A"
+       :d
+       "M236.36,108.738h-21.442c-1.299,0-2.351-1.051-2.351-2.351c0-1.299,1.051-2.351,2.351-2.351h21.442 c1.299,0,2.351,1.052,2.351,2.351C238.711,107.687,237.659,108.738,236.36,108.738z"}]
+     [:circle
+      {:fill "#64798A",
+       :cx   "201.011",
+       :cy   "106.388",
+       :r    "2.35"}]]]])
 
 ;; https://www.svgrepo.com/svg/190729/computer-tv?edit=true
 (defn computer [color background-color]
