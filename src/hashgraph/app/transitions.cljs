@@ -17,7 +17,7 @@
                                           safe-assoc! safe-assoc-in!
                                           safe-update! safe-update-in!
                                           hash=]
-             :refer-macros [l letl letl2 defn*]
+             :refer-macros [if-let* l letl letl2 defn*]
              :as utils]))
 
 (def tt 500) ;; transition time ms
@@ -59,21 +59,33 @@
         tt-end   (+ tt-start tt)]
     (doseq [evt evts<]
       (let [view-state (-> [(hash topic-path) (hash evt)] ->view-state)
-            ?p         (or (-> evt :event/other-parent)
-                             (-> evt :event/self-parent))
-            ?p-current (when-let [p ?p]
-                           (-> [(hash topic-path) (hash p)] ->view-state view-state->current))
             to-x       (creator->x (hg/creator evt))
             to-y       (hga-view/evt->y evt)]
-        (if ?p-current
-          (t! view-state
-            :x tt-start ?p-current to-x tt-end
-            :y tt-start ?p-current to-y tt-end
-            :opacity tt-start 0 1 tt-end)
-          (t! view-state
-            :x       tt-start to-x to-x tt-end ;; use the same flow so :view-state/desired get's updated
-            :y       tt-start to-y to-y tt-end
-            :opacity tt-start 0    1    tt-end))))))
+        (if-let [p (or (-> evt :event/other-parent)
+                       (-> evt :event/self-parent))]
+          (let [p-view-state (-> [(hash topic-path) (hash p)] ->view-state)
+                p-current    (-> p-view-state view-state->current)
+                current      (-> view-state view-state->current)]
+            (when (js-map/empty? current)
+              ;; ensure current is initialized with x and y, as otherwise wind-cr! may happen before play! happened for that even, taking uninit val; ugly
+              (let [p-desired (-> p-view-state view-state->desired)]
+                (js-map/assoc! current
+                               :x (or (js-map/get p-current :x)
+                                      (js-map/get p-desired :x))
+                               :y (or (js-map/get p-current :y)
+                                      (js-map/get p-desired :y))
+                               :opacity 0)))
+            (t! view-state
+              :x       tt-start p-current to-x tt-end
+              :y       tt-start p-current to-y tt-end
+              :opacity tt-start 0         1    tt-end))
+
+          (do (let [current (-> view-state view-state->current)]
+                (when (js-map/empty? current) (js-map/assoc! current :x to-x :y to-y :opacity 0)))
+              (t! view-state
+                :x       tt-start to-x to-x tt-end ;; use the same flow so :view-state/desired get's updated
+                :y       tt-start to-y to-y tt-end
+                :opacity tt-start 0    1    tt-end)))))))
 
 
 (defn rewind! [topic-path evts>]
@@ -83,20 +95,18 @@
     (doseq [evt evts>]
       (let [view-state   (-> [(hash topic-path) (hash evt)] ->view-state)
             current      (-> view-state view-state->current)
-            ?p           (or (-> evt :event/other-parent)
-                             (-> evt :event/self-parent))
-            ?p-current   (when-let [p ?p]
-                           (-> [(hash topic-path) (hash p)] ->view-state view-state->current))
             from-x       (js-map/get current :x)
             from-y       (js-map/get current :y)
             from-opacity (js-map/get current :opacity)]
-        (if ?p-current
+        (if-let [p (or (-> evt :event/other-parent)
+                       (-> evt :event/self-parent))]
+          (let [p-current (-> [(hash topic-path) (hash p)] ->view-state view-state->current)]
+            (t! view-state
+              :x       tt-start from-x       p-current tt-end
+              :y       tt-start from-y       p-current tt-end
+              :opacity tt-start from-opacity 0         tt-end))
           (t! view-state
-            :x       tt-start from-x       ?p-current tt-end
-            :y       tt-start from-y       ?p-current tt-end
-            :opacity tt-start from-opacity 0          tt-end)
-          (t! view-state
-            :opacity tt-start from-opacity 0          tt-end))))))
+            :opacity tt-start from-opacity 0         tt-end))))))
 
 
 (defn* ^:memoizing initial-tip-taped+initial-cr+cr->?to-initial-y [initial-tip-taped initial-cr cr]
@@ -128,18 +138,13 @@
 (def cr-tt-delay (/ tt 20))
 (def **last-cr-tt-start  (volatile! (cljs.core/system-time)))
 (def **last-cr-direction (volatile! nil))
-(defn weave-cr! [topic-path initial-tip-taped initial-cr ?creator->x prev-cr current-cr]
+(defn weave-cr! [topic-path initial-tip-taped initial-cr creator->x prev-cr current-cr]
   #_(l [::weave-cr! topic-path prev-cr current-cr])
-
-  ;; trigger manually, and not wait for engine that runs on next frame, as some may not be processed and we need them
-  (current->desired-run!)
-
   (let [main-creator (hg/creator initial-tip-taped)
         new-crs      (into [] (comp (take-while some?)
-                               (take-while (fn [cr] (not (hash= cr prev-cr)))))
-                      (iterate :concluded-round/prev-concluded-round current-cr))
-        to-x         (or (get ?creator->x main-creator)
-                         0)]
+                                    (take-while (fn [cr] (not (hash= cr prev-cr)))))
+                           (iterate :concluded-round/prev-concluded-round current-cr))
+        to-x         (get creator->x main-creator)]
     (vswap! **last-cr-tt-start (fn [last-tt-start] (if (= @**last-cr-direction :forwards)
                                                      (max last-tt-start (cljs.core/system-time))
                                                      (cljs.core/system-time))))
@@ -167,16 +172,12 @@
                                           0))]
             (js-map/assoc! current :fill (:received-event/color re))
             (t! view-state
-              :x tt-start (js-map/get current :x) to-x nil ;; blank tt-end, as it's not used atm by the engine anyway
-              :y tt-start (js-map/get current :y) to-y nil
-              :fill-opacity tt-start from-fill-opacity 1 nil)))))))
+              :x            tt-start (js-map/get current :x) to-x nil ;; blank tt-end, as it's not used atm by the engine anyway
+              :y            tt-start (js-map/get current :y) to-y nil
+              :fill-opacity tt-start from-fill-opacity       1    nil)))))))
 
 (defn unweave-cr! [topic-path ?creator->x prev-cr current-cr]
   #_(l [::unweave-cr! topic-path ?creator->x prev-cr current-cr])
-
-  ;; trigger manually, and not wait for engine that runs on next frame, as some may not be processed and we need them
-  (current->desired-run!)
-
   (let [crs-to-rewind (into [] (comp (take-while some?)
                                      (take-while (fn [cr] (not (hash= cr current-cr)))))
                             (iterate :concluded-round/prev-concluded-round prev-cr))]
@@ -207,8 +208,8 @@
                         (not= from-opacity to-opacity)))
             (let [tt-start (vswap! **last-cr-tt-start + cr-tt-delay)]
               (t! view-state
-                :x tt-start from-x to-x nil
-                :y tt-start from-y to-y nil
+                :x            tt-start from-x            to-x            nil
+                :y            tt-start from-y            to-y            nil
                 :fill-opacity tt-start from-fill-opacity to-fill-opacity nil))))))))
 
 (defn re-position! [topic-path old-x->new-x]
