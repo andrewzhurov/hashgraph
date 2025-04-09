@@ -37,6 +37,7 @@
                         clojure.string/replace hooks.regex-checks/double-escaped-regex}}
  :lint-as {;; hashgraph.utils.core/defnm clojure.core/defn
            hashgraph.utils.core/letl clojure.core/let
+           hashgraph.utils.core/if-let* clojure.core/let
            promesa.core/let clojure.core/let
            promesa.core/loop clojure.core/loop
            promesa.core/recur clojure.core/recur
