@@ -373,7 +373,7 @@
                            {:->inspected?   (fn [ips els]           (->> els (some (fn [el] (hga-inspector/->in ips el)))))
                             :->accented?    (fn [accented _ips els] (->> els (some (fn [el] (hga-inspector/->in accented el)))))})
            [:circle.event {:r            hga-view/evt-r
-                           :stroke       (-> event hg/creator creator->color rgb->css-str)
+                           :stroke       (if received-event "gray" (-> event hg/creator creator->color rgb->css-str))
                            :stroke-width 1
                            :fill         "white"}]
            (when (> fill-opacity 0)
