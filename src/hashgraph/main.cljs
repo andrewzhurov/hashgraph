@@ -471,7 +471,7 @@
 
 (defn* ^{:memoizing {:bind {:->in-mem?  ->in-mem?
                             :->from-mem ->from-mem}}}
-  ->round ;; see-many-see-many-see ;; see-many-strongly-see
+  ->round ;; many-see-many
   "Round number of y, as known to a previous round concluded x.
    It's either 1 if y has no parents,
    or a max round of events strongly seen by many (as known to x) +1."
@@ -1083,21 +1083,24 @@
                   ;; try to conclude next round
                   (recur next-cr))))))))))
 
+(defn lamport-cmp [evt1 evt2]
+  (let [evt1-depth (event->depth evt1)
+        evt2-depth (event->depth evt2)]
+    (if (not= evt1-depth evt2-depth)
+      (< evt1-depth evt2-depth)
+      (let [evt1-idx (event->index evt1)
+            evt2-idx (event->index evt2)]
+        (if (not= evt1-idx evt2-idx)
+          (< evt1-idx evt2-idx)
+          (< (hash evt1) (hash evt2)))))))
+
 (defn* ->?received-event
   [prev-cr cr-r cr-es-r]
   (let [received-round-size  (count cr-es-r)
         ?prev-received-event (some-> prev-cr :concluded-round/last-received-event)]
 
     (->> cr-es-r
-         (sort (fn [evt1 evt2] (let [evt1-depth (event->depth evt1)
-                                     evt2-depth (event->depth evt2)]
-                                 (if (not= evt1-depth evt2-depth)
-                                   (< evt1-depth evt2-depth)
-                                   (let [evt1-idx (event->index evt1)
-                                         evt2-idx (event->index evt2)]
-                                     (if (not= evt1-idx evt2-idx)
-                                       (< evt1-idx evt2-idx)
-                                       (< (hash evt1) (hash evt2))))))))
+         (sort lamport-cmp)
          ;; no value in building a chain of received events
          ;; TODO just store ordered received events on concluded-round
          (reduce (fn [?prev-received-event evt]
